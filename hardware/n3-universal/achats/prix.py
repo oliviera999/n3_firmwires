@@ -1,10 +1,13 @@
 """Prix relevés le 18/10/2026 sur les boutiques marocaines (DH, tels qu'affichés).
 Mettre DATE à jour à chaque nouveau relevé.
+Rev 0.3 (22/11/2026) : modules relais relevés sur Jumia.ma ; relais nus, Hi-Link, porte-fusible,
+varistance et cordon secteur retirés ; 1N5822, 220 µF et bloc 5 V 3 A PAS encore relevés (prix None).
 id: (fournisseur, prix du lot DH ou None, taille du lot, unité de vente, lien, source, remarque)
 source : "Maroc" ou "Import LCSC" (pas de colis LCSC vers le Maroc depuis le 30/10/2026 :
 port UPS ≥ 104,72 $, COMMANDE.md §2)."""
 
-DATE = "18/10/2026"
+DATE = "18/10/2026"          # relevé d'ensemble
+DATE_REV03 = "22/11/2026"    # modules relais (Jumia.ma)
 
 MP = "MicroPlanet"
 MS = "Moussasoft"
@@ -21,7 +24,7 @@ PRIX = {
     # résistances : MicroPlanet, 1 %, toutes les valeurs dont 18k
     **{f"R_{v}": (MP, 1.50, 5, "lot de 5",
                   "https://www.microplanet.ma/produit/resistances-14w-50-valeurs-precision-1-1-packet-5-unites/",
-                  "Maroc", "1/4 W 1 %, vendues par 5.") for v in ("220", "1k", "2k", "4.7k", "10k", "18k", "100k")},
+                  "Maroc", "1/4 W 1 %, vendues par 5.") for v in ("220", "470", "1k", "2k", "4.7k", "10k", "18k", "100k")},
     "C_100n": (A2, 0.50, 1, "pièce", "https://a2itronic.ma/product/condensateur-ceramique-01uf-50v-2/", "Maroc",
                "Céramique 50 V."),
     "C_10u25": (A2, 1.00, 1, "pièce", "https://a2itronic.ma/product/condensateur-electrolytique-aluminium-10uf-50v-dc-2/",
@@ -34,7 +37,21 @@ PRIX = {
                  "8×12 mm sur une empreinte 10 mm / pas 5 : écarter légèrement les pattes."),
     "C_1000u16": (A2, 3.00, 1, "pièce", "https://a2itronic.ma/product/condensateur-electrolytique-aluminium-1000uf-25v-dc-2/",
                   "Maroc", "Page ambiguë 16/25 V : les deux conviennent, mais diamètre ≤ 10 mm et pas 5 mm."),
-    "1N4007": (S4, 0.90, 1, "pièce", "https://shop4makers.com/produit/diode-1n4007/", "Maroc", ""),
+    "D_1N5822": ("À relever", None, 1, "pièce", "", "Maroc",
+                 "Prix et boutique NON relevés le 22/11/2026 : demander une 1N5822 (Schottky 3 A 40 V, DO-201) en boutique ; SR360 / SB340 conviennent. Une par carte. Repli LCSC C2476. "
+                 "Ne pas remplacer par une 1N4007 (chute 0,8 V) ni par une 1N5819 de 1 A."),
+    "C_220u16": ("À relever", None, 1, "pièce", "", "Maroc",
+                 "Prix NON relevé le 22/11/2026. 220 µF 16 ou 25 V, diamètre ≤ 8 mm (empreinte 8 mm, pas 3,5 mm)."),
+    "MODULE_RELAIS": ("Jumia.ma (ACC électronique)", 18.00, 1, "pièce",
+                      "https://www.jumia.ma/generic-module-1-relais-5v-10a-67324768.html", "Maroc",
+                      "Relevé du 22/11/2026. La page ne dit PAS si le module est actif à l'état haut : essai sur table "
+                      "obligatoire avant d'en acheter plusieurs. Même vendeur : 2 relais 28 DH, 8 relais 105 DH. "
+                      "Modules KY-019 déjà possédés : n'acheter que le complément."),
+    "BLOC_5V": (MG, None, 1, "pièce", "https://megma.ma/alimentation-chargeur-5v-2a/", "Maroc",
+                "Prix NON relevé pour un 5 V 3 A. Megma : 5 V 2 A avec jack 5,5×2,1 à 50 DH (relevé du 18/10/2026), le minimum. "
+                "Mesurer la tension en charge avant de fermer le coffret (≥ 5,1 V, sinon cavalier JP22 posé)."),
+    "PROTECTION_AMONT": ("Électricien", None, 1, "pièce", "", "Maroc",
+                         "Non relevé : disjoncteur 2 A à 6 A ou porte-fusible en ligne, chez un électricien / en quincaillerie."),
     "1N4007_EXT": (S4, 0.90, 1, "pièce", "https://shop4makers.com/produit/diode-1n4007/", "Maroc", ""),
     "BAT85": (MS, 2.00, 1, "pièce", "https://www.moussasoft.com/produit/bat-85-diode-schottky-30v-200ma/", "Maroc",
               "Boîtier DO-34, se pose sur les trous DO-35. BAT43/42/54 introuvables au Maroc."),
@@ -50,17 +67,7 @@ PRIX = {
                 "Maroc", "Stock non vérifié : appeler avant. Repli LCSC C2564."),
     "LD1117": (MG, 7.50, 1, "pièce", "https://megma.ma/regulateur-de-tension-lm1117t-3-3v-to-220/", "Maroc",
                "LM1117T-3.3 TO-220, même brochage que le LD1117V33. Pas de version SOT-223 (CMS)."),
-    "LED_R": (MS, 1.00, 1, "pièce", "https://www.moussasoft.com/produit/led-5mm-rouge/", "Maroc", ""),
     "LED_V": (S4, 0.90, 1, "pièce", "https://shop4makers.com/produit/led-5mm/", "Maroc", ""),
-    "SRD05": (MS, 18.00, 1, "pièce", "https://www.moussasoft.com/", "Maroc",
-              "Prix BOM (Moussasoft). Composant seul 5 broches, pas un module relais."),
-    "VARISTANCE": (MP, 4.00, 1, "pièce", "https://www.microplanet.ma/produit/varistance-14mm/", "Maroc",
-                   "Variante 470 V (471)."),
-    "PORTEFUS_5x20": (MS, 4.00, 1, "pièce", "https://www.moussasoft.com/produit/support-fusible-avec-broche-dip-et-couvercle/",
-                      "Maroc", "Mesurer l'entraxe des pattes AVANT achat : 22,0–22,6 mm. Sinon LCSC C3131."),
-    "FUS_T1A": (MG, 0.50, 1, "pièce", "https://megma.ma/fusible-en-verre-5x20mm-plusieur-valeurs/", "Maroc",
-                "Le type T (temporisé) n'est pas indiqué : demander « T1A » ; un fusible rapide F peut sauter au branchement."),
-    "HLK20M05": (S4, 90.00, 1, "pièce", "https://shop4makers.com/", "Maroc", "Prix BOM (Shop4Makers). Repli LCSC C465406."),
     "BORNIER_2P": (MP, 2.00, 1, "pièce", "https://www.microplanet.ma/produit/bornier-a-vis-2-broches/", "Maroc",
                    "KF301 annoncé au pas de 5,0 mm : se monte sur les trous 5,08 (écart 0,08 mm)."),
     "BORNIER_3P": (MP, 3.00, 1, "pièce", "https://www.microplanet.ma/produit/bornier-a-vis-3-broches/", "Maroc",
@@ -75,15 +82,14 @@ PRIX = {
                  "Prix du plus petit lot (bas de la fourchette affichée)."),
     "JACK_DC": ("ShoppingMaroc", 4.00, 1, "pièce", "https://shoppingmaroc.net/connectique-jack/280-connecteur-pcb-55x21mm-dc-power.html",
                 "Maroc", "DC-005 traversant 3 broches."),
-    "FIL": ("—", 0, 1, "—", "", "Maroc", "Chute de patte de résistance : gratuit."),
     "TP_FIL": ("—", 0, 1, "—", "", "Maroc", "Chute de patte : gratuit."),
     "VIS_M3": ("Dsindustrie", 120.00, 60, "kit 200 pièces (60 vis)",
                "https://dsindustrie.com/produit/vis-plastique-tete-hexagonale-m2-m2-5-m3-m4-ensemble-200-pieces-maroc/",
-               "Maroc", "Kit nylon : 60 vis, 60 écrous, 80 entretoises 6–12 mm ; un kit suffit pour les 4 cartes."),
+               "Maroc", "Kit nylon : 60 vis, 60 écrous, 80 entretoises 6–12 mm ; un kit suffit pour les 4 cartes. Rev 0.3 : le nylon n'est plus imposé (plus de 230 V sur la carte)."),
     "ENTRETOISE_M3": ("Dsindustrie", 0, 1, "inclus dans le kit", "", "Maroc", "Incluses dans le kit nylon M3."),
     "BOITIER": ("EnergyMarket", 352.00, 1, "pièce",
                 "https://energymarket.ma/product/coffret-electrique-etanche-ip65-abs-haute-resistance-plusieurs-dimensions-disponibles",
-                "Maroc", "La carte fait 278 × 135 mm : coffret ≥ 300 × 200 mm. Prix affiché, taille à confirmer avec le vendeur."),
+                "Maroc", "La carte fait 278 × 91 mm : coffret ≥ 300 mm de long, avec la place des modules relais au-dessus (ffp5cs). Prix affiché, taille à confirmer avec le vendeur."),
     "PRESSE_ETOUPE": ("Quincaillerie", None, 1, "pièce", "", "Maroc", "Non trouvé en ligne au Maroc : électricien / quincaillerie."),
     "FIL_05": ("ElectroDelivery", 3.50, 1, "mètre", "https://electrodelivery.ma/fr/cables/813-cable-075.html", "Maroc",
                "Câble souple 0,75 mm² (pas de 0,5 mm² en ligne)."),
@@ -95,8 +101,6 @@ PRIX = {
                     "Seul 5 V 2 A en stock avec un vrai jack 5,5×2,1 (sans marque). Mieux : chargeur de téléphone de marque + cordon USB→jack."),
     "CABLE_USB_JACK": (MS, 35.00, 1, "pièce", "https://www.moussasoft.com/produit/cable-usb-type-a-vers-connecteur-jack-5-5x2-1mm-maroc/",
                        "Maroc", "En rupture lors du relevé (A2itronic idem, 35 DH)."),
-    "CORDON_SECTEUR": ("La-Librairie.ma", 12.00, 1, "pièce", "https://www.la-librairie.ma/produit/cable-dalimentation-2-pins/",
-                       "Maroc", "Probablement à embase C7 : couper l'embase, dénuder, embouts. Ou cordon d'électricien."),
     "FUSIBLE_LAME": ("Accessoires auto", None, 1, "pièce", "", "Maroc",
                      "Porte-fusible lame en ligne non trouvé en ligne : magasin d'accessoires auto (fusible ATO/mini 10 A)."),
     "KIT_EMBOUTS": (MS, 250.00, 1, "kit",
@@ -113,8 +117,6 @@ PRIX.update({
                      "Rev 0.2.3 : ESP32 38 broches (DevKitC, WROOM-32E), relevé du 31/10/2026. Le site A1 accepte "
                      "les rangées à 25,4 ET 22,86 mm. Deux modules 38 broches déjà possédés : n'en acheter que "
                      "pour les profils restants. Ne pas importer (ANRT)."),
-    "SRD05": (MS, 18.00, 1, "pièce", "https://www.moussasoft.com/produit/relai-electrique-5v-srd-05vdc-sl-c/", "Maroc",
-              "Composant seul 5 broches, pas un module relais. 324 en stock."),
     "DHT11": (S4, 16.20, 1, "pièce", "https://shop4makers.com/produit/capteur-temperature-et-dhumidite-dht11/", "Maroc",
               "Capteur nu 4 broches : 1=VCC 2=DATA 3=libre 4=GND (pull-up déjà sur la carte). DHT22 : 49,50 DH."),
     "DS18B20": (A2, 50.00, 1, "pièce", "https://a2itronic.ma/product/dallas-capteur-de-temperature-1-wire-ds18b20-waterproof-longueur-1m-2/",
@@ -146,8 +148,6 @@ PRIX.update({
     "PANNEAU_6V": ("Jumia.ma (Safe Buys)", 110.00, 1, "pièce",
                    "https://www.jumia.ma/generic-panneau-solaire-6v-3.8w-pour-charger-les-telephones-63660146.html", "Maroc",
                    "6 V 3,8 W (pas de 5 W au Maroc) : ~7 Wh/j en hiver pour ~2,3 consommés, marge ×3. Sortie USB = se branche sur l'USB-C du TP4056."),
-    "HLK20M05": (S4, 90.00, 1, "pièce", "https://shop4makers.com/produit/alimentation-hlk-20m05-ac-dc-5v-4a-20w/", "Maroc",
-                 "Authenticité non garantie : mesurer les entraxes des broches (COMMANDE.md §0.3) avant de souder."),
     "BUCK": (S4, 25.00, 1, "pièce", "https://shop4makers.com/produit/mp1584en-buck-module/", "Maroc", "Entrée 28 V max : convient au bus AGM."),
     "AGM_12V": ("Jumia.ma", 490.00, 1, "pièce", "https://www.jumia.ma/sunlight-batterie-12v-12ah-spa-etanche-vrla-agm-67767021.html",
                 "Maroc", "Prix de référence (Sunlight 12 Ah AGM, en rupture ; 9 Ah générique 249 DH)."),

@@ -1,4 +1,4 @@
-* n3u_sim.lib ? GENERE par generator/generate.py depuis simulation/models.lib ? modeles SPICE des composants de n3-universal rev 0.2
+* n3u_sim.lib ? GENERE par generator/generate.py depuis simulation/models.lib ? modeles SPICE des composants de n3-universal (rev 0.2, revise en rev 0.3)
 * Provenance :
 *   BC337-40  : modele Gummel-Poon type NXP/Philips (Bf=560 typ ; hFE datasheet 250-630 @100 mA)
 *   1N4007    : modele diode standard (bibliotheques publiques)
@@ -8,9 +8,16 @@
 *   LD1117V33 : modele COMPORTEMENTAL (Vout = min(3,3 V ; Vin - Vdrop(I)), Vdrop = 1,0 V + 0,25 Ohm*I,
 *               Iq = 5 mA, Rout 12 mOhm, bande passante de boucle ~100 kHz). Suffisant pour DC,
 *               dropout, thermique ; NE PAS l'utiliser pour juger la stabilite fine (ESR).
+*               Rev 0.3 : le courant de SORTIE est preleve sur l'ENTREE (source Bld). Jusqu'a la
+*               0.2.3 la sortie etait une source ideale et l'entree ne tirait que Iq : la diode D5,
+*               Q12 et le cable ne voyaient pas le courant de l'ESP32, et les marges de la chaine
+*               5 V -> DevKit sortaient optimistes d'environ 0,15 V (SIMULATION.md, section 13).
 *   AMS1117-3.3 (DevKit) : meme structure, Vdrop = 1,1 V + 0,2 Ohm*I, Iq 5 mA
 *   TVS 1.5KE6.8A / 1.5KE18A, zener 1N4744A, Schottky 1N5822, BAT85, LED rouge : modeles diode
 *               parametres sur Vbr / Vf datasheet (knee approximatif).
+*   1N5822    : 0,42 V a 0,45 A et 0,52 V a 3 A = courbe MAXIMALE de la fiche (prudent).
+*               1N5822T : courbe typique a 25 degC (0,33 V a 0,45 A), pour encadrer.
+*   1N5819    : diode serie d'un DevKit entre sa prise USB et sa broche 5 V (ordre de grandeur).
 *   Bobine SRD-05VDC-SL-C : 70 Ohm (89 mW) ; inductance NON documentee -> parametre L_COIL (50-200 mH).
 * Tout chiffre issu d'un modele "approximatif" est a confirmer sur le banc.
 
@@ -23,6 +30,8 @@
 + Cjo=1e-11 Vj=0.7 M=0.5 Fc=0.5 Tt=1e-07)
 
 .model 1N5822 D(Is=1.7e-6 Rs=0.012 N=1.3 Cjo=400p Vj=0.3 M=0.45 Bv=40 Ibv=1e-4 Tt=50n)
+.model 1N5822T D(Is=3.2e-5 Rs=0.02 N=1.3 Cjo=400p Vj=0.3 M=0.45 Bv=40 Ibv=1e-4 Tt=50n)
+.model 1N5819 D(Is=2.5e-6 Rs=0.05 N=1.25 Cjo=110p Bv=40 Ibv=1e-4)
 
 .model BAT85 D(Is=211.7n N=1.0 Rs=1.0 Cjo=10p Bv=30 Ibv=100n)
 
@@ -41,6 +50,7 @@
 .subckt LD1117V33 in out gnd
 Biq in gnd I = 5m*max(0, min(1, V(in)))
 Vsense out_i out 0
+Bld in gnd I = max(0, i(Vsense))*max(0, min(1, V(in)/0.5))
 Bctl ctl gnd V = max(0, min(3.3, V(in) - 1.0 - 0.25*abs(i(Vsense))))
 Rbw ctl ctl2 1k
 Cbw ctl2 gnd 1.6n
@@ -52,6 +62,7 @@ Rout out_e out_i 12m
 .subckt AMS1117 in out gnd
 Biq in gnd I = 5m*max(0, min(1, V(in)))
 Vsense out_i out 0
+Bld in gnd I = max(0, i(Vsense))*max(0, min(1, V(in)/0.5))
 Bctl ctl gnd V = max(0, min(3.3, V(in) - 1.1 - 0.2*abs(i(Vsense))))
 Rbw ctl ctl2 1k
 Cbw ctl2 gnd 1.6n

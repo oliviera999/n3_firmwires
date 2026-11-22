@@ -1,4 +1,4 @@
-"""Sim 8 — rev 0.3, decision D7 : D5 = 1N5822 posee partout + cavalier 2 points en parallele.
+"""Sim 7 — rev 0.3, decision D7 : D5 = 1N5822 posee partout + cavalier 2 points en parallele.
 Chaine source -> cable -> Q12 -> +5V -> D5 (ou cavalier) -> VIN_5V -> AMS1117 du DevKit -> 3V3.
 
  a) marge statique par profil, au courant de pointe du DevKit (Wi-Fi, 0,45 A) ;
@@ -6,9 +6,10 @@ Chaine source -> cable -> Q12 -> +5V -> D5 (ou cavalier) -> VIN_5V -> AMS1117 du
  c) fermeture de Q7 sur C2 decharge (profils a rail commute) avec la diode ;
  d) ffp5cs sur bloc 5 V : 6 modules relais + Wi-Fi + servo SG90 bloque.
 
-Diode : « max » = modele de models.lib (0,42 V a 0,45 A, 0,52 V a 3 A = maximum de la fiche) ;
-        « typ » = 0,33 V a 0,45 A (courbe typique 25 degC). Regulateur du DevKit : AMS1117 comportemental
-        (chute 1,1 V + 0,2 ohm x I, soit 1,19 V a 0,45 A : il regule tant que VIN_5V >= 4,49 V).
+Diode : « max » = 1N5822 de models.lib (0,42 V a 0,45 A, 0,52 V a 3 A = maximum de la fiche) ;
+        « typ » = 1N5822T (0,33 V a 0,45 A, courbe typique 25 degC). Regulateur du DevKit : AMS1117
+        comportemental (chute 1,1 V + 0,2 ohm x I, soit 1,19 V a 0,45 A : il regule tant que
+        VIN_5V >= 4,49 V), dont le courant de sortie est preleve sur l'entree (models.lib rev 0.3).
 """
 from __future__ import annotations
 import json, re, subprocess, itertools
@@ -16,36 +17,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"; OUT.mkdir(exist_ok=True)
 
-HEAD = """* Sim 8 : {label}
+HEAD = """* Sim 7 : {label}
 .param BF_BC337=560 VTO_4905={vto}
 .option method=gear gmin=1e-10 reltol=2e-3
 .include models.lib
-.model 1N5822T D(Is=3.2e-5 Rs=0.02 N=1.3 Cjo=400p Vj=0.3 M=0.45 Bv=40 Ibv=1e-4 Tt=50n)
-.model 1N5819 D(Is=2.5e-6 Rs=0.05 N=1.25 Cjo=110p Bv=40 Ibv=1e-4)
 .model SWM SW(Ron=0.15 Roff=1e9 Vt=1.5 Vh=0.1)
-* Regulateurs comportementaux CORRIGES : le courant de sortie est preleve sur l'entree
-* (dans models.lib la sortie est une source ideale : l'entree ne tire que Iq = 5 mA, donc la diode D5,
-* Q12 et le cable ne voient pas le courant de l'ESP32 -> chute sous-estimee).
-.subckt AMS1117C in out gnd
-Biq in gnd I = 5m*max(0, min(1, V(in)))
-Vsense out_i out 0
-Bld in gnd I = max(0, i(Vsense))*max(0, min(1, V(in)/0.5))
-Bctl ctl gnd V = max(0, min(3.3, V(in) - 1.1 - 0.2*abs(i(Vsense))))
-Rbw ctl ctl2 1k
-Cbw ctl2 gnd 1.6n
-Eout out_e gnd ctl2 gnd 1
-Rout out_e out_i 15m
-.ends
-.subckt LD1117C in out gnd
-Biq in gnd I = 5m*max(0, min(1, V(in)))
-Vsense out_i out 0
-Bld in gnd I = max(0, i(Vsense))*max(0, min(1, V(in)/0.5))
-Bctl ctl gnd V = max(0, min(3.3, V(in) - 1.0 - 0.25*abs(i(Vsense))))
-Rbw ctl ctl2 1k
-Cbw ctl2 gnd 1.6n
-Eout out_e gnd ctl2 gnd 1
-Rout out_e out_i 12m
-.ends
 """
 
 def ng(txt: str, name: str) -> str:
@@ -64,7 +40,7 @@ M12 vin_raw q12g v5 IRF4905
 R57 q12g 0 100k
 Irail v5 0 {irail}
 {d5}
-XU2 vin5 v33 0 AMS1117C
+XU2 vin5 v33 0 AMS1117
 Iesp v33 0 {iesp}
 .control
 op
@@ -94,19 +70,19 @@ PROFILS = [  # nom, Vsource, R serie (source + cable), limite de courant, charge
 res = {"statique": [], "vsource_min": []}
 print(f"{'profil':66}{'D5':13}{'Vth':>4}{'+5V':>6}{'VIN_5V':>8}{'3V3':>6}{'marge':>7}")
 for (nom, vs, rs, il, ir), (dn, d5), vto in itertools.product(PROFILS, D5.items(), (-3, -4)):
-    out = ng(STATIC.format(label=nom, vto=vto, vsrc=vs, rsrc=rs, ilim=il, irail=ir, d5=d5, iesp=0.45), "s8_static")
+    out = ng(STATIC.format(label=nom, vto=vto, vsrc=vs, rsrc=rs, ilim=il, irail=ir, d5=d5, iesp=0.45), "s7_static")
     v5, vin5, v33 = g(out, "v(v5)"), g(out, "v(vin5)"), g(out, "v(v33)")
     res["statique"].append(dict(profil=nom, d5=dn, vto=vto, v5=round(v5, 3), vin5=round(vin5, 3), v33=round(v33, 3), marge_regul=round(vin5 - 4.49, 3)))
     print(f"{nom:66}{dn:13}{vto:4}{v5:6.2f}{vin5:8.2f}{v33:6.2f}{vin5 - 4.49:+7.2f}")
 
 # tension de source minimale pour garder 3V3 >= 3,20 V (diode max, Q12 a -4 V = pire cas ; et typ/-3)
 for (nom, _, rs, il, ir) in (PROFILS[1], PROFILS[3], PROFILS[6], PROFILS[8], PROFILS[12]):
-    row = dict(profil=re.sub(r" : .*?(,|$)", "", nom, count=1) + f" (R {rs} ohm, rail {ir*1000:.0f} mA)")
+    row = dict(profil=nom.split(" : ")[0] + f" (R {rs} ohm, rail {ir*1000:.0f} mA)")
     for tag, d5, vto in (("pire", D5["1N5822 max"], -4), ("typique", D5["1N5822 typ"], -3), ("fil_typique", D5["fil (0.2.3)"], -3)):
         lo, hi = 4.0, 6.0
         for _ in range(18):
             mid = (lo + hi) / 2
-            v33 = g(ng(STATIC.format(label=nom, vto=vto, vsrc=mid, rsrc=rs, ilim=il, irail=ir, d5=d5, iesp=0.45), "s8_static"), "v(v33)")
+            v33 = g(ng(STATIC.format(label=nom, vto=vto, vsrc=mid, rsrc=rs, ilim=il, irail=ir, d5=d5, iesp=0.45), "s7_static"), "v(v33)")
             lo, hi = (lo, mid) if v33 >= 3.2 else (mid, hi)
         row[tag] = round(hi, 2)
     res["vsource_min"].append(row); print("Vsource min pour 3V3 >= 3,20 V :", row)
@@ -123,7 +99,7 @@ Brail v5 0 I = {irail}*max(0, min(1, V(v5)/3))
 Rrail v5 0 10k
 D5 v5 vin5 1N5822
 Rjp v5 vin5 {rjp}
-XU2 vin5 v33 0 AMS1117C
+XU2 vin5 v33 0 AMS1117
 Iesp v33 0 {iesp}
 .control
 op
@@ -136,7 +112,7 @@ quit
 res["usb_seul_cavalier_pose"] = []
 print("\nUSB seul, cavalier pose (rail = VIN_5V) :")
 for vusb, rusb, nmod, iesp in itertools.product((5.0, 4.75), (0.3, 0.6), (0, 1, 2), (0.125, 0.45)):
-    out = ng(USB.format(label="usb seul", vto=-3, vusb=vusb, rusb=rusb, alim="", irail=0.040 + nmod * MOD, rjp=0.03, iesp=iesp, extra=""), "s8_usb")
+    out = ng(USB.format(label="usb seul", vto=-3, vusb=vusb, rusb=rusb, alim="", irail=0.040 + nmod * MOD, rjp=0.03, iesp=iesp, extra=""), "s7_usb")
     v5, v33, iusb = g(out, "v(v5)"), g(out, "v(v33)"), g(out, "iusb")
     r = dict(vusb=vusb, r_cable=rusb, modules=nmod, i_devkit=iesp, rail=round(v5, 2), v33_devkit=round(v33, 2), i_usb_mA=round(iusb * 1e3), u1_regule=bool(v5 >= 4.31))
     res["usb_seul_cavalier_pose"].append(r); print(" ", r)
@@ -146,7 +122,7 @@ for cav, rjp in (("ote", 1e12), ("pose (INTERDIT)", 0.03)):
     for valim in (5.1, 4.8, 0.0):
         alim = f"Vad vad 0 {valim}\nRs vad vin_raw 0.15" if valim else "Rs vin_raw 0 1e7"
         out = ng(USB.format(label="usb+alim", vto=-3, vusb=5.0, rusb=0.3, alim=alim, irail=0.043 + 6 * MOD, rjp=rjp, iesp=0.2,
-                            extra="i(Vad)" if valim else ""), "s8_usb2")
+                            extra="i(Vad)" if valim else ""), "s7_usb2")
         r = dict(cavalier=cav, alim=valim or "absente", rail=round(g(out, "v(v5)"), 2), vin5=round(g(out, "v(vin5)"), 2),
                  i_usb_mA=round(g(out, "iusb") * 1e3), i_alim_mA=round(-(g(out, "i(vad)") or 0) * 1e3))
         res["usb_et_alim"].append(r); print(" ", r)
@@ -160,7 +136,7 @@ Resr1 c1e 0 0.08
 {d5}
 Chold vin5 che {chold}
 Resrh che 0 0.15
-XU2 vin5 v33 0 AMS1117C
+XU2 vin5 v33 0 AMS1117
 Cdk v33 cdke 22u
 Resrdk cdke 0 0.3
 Iesp v33 0 0.08
@@ -177,7 +153,7 @@ C2 ldo_in c2e {c2}
 Resr2 c2e 0 0.12
 C11 ldoq c11e 10u
 Resr11 c11e 0 0.5
-XU1 ldoq v33sw 0 LD1117C
+XU1 ldoq v33sw 0 LD1117V33
 C12 v33sw c12e 100u
 Resr12 c12e 0 0.2
 Rload v33sw 0 110
@@ -203,7 +179,7 @@ for (name, src), (dn, d5), c2, ch in itertools.product(SRC.items(), (("fil", "Rd
     if dn == "fil" and ch != "1n": continue
     worst = None
     for vto in (-2, -3):
-        out = ng(INRUSH.format(label=name, vto=vto, src=src, d5=d5, c2=c2, chold=ch), "s8_inrush")
+        out = ng(INRUSH.format(label=name, vto=vto, src=src, d5=d5, c2=c2, chold=ch), "s7_inrush")
         r = dict(v5=g(out, "v5_min"), v33=g(out, "v33_min"), av=g(out, "v33_avant"), t=(g(out, "t_below3") or 0) * 1e3)
         if worst is None or r["v33"] < worst["v33"]: worst = r
     row = dict(source=name, d5=dn, c2="non pose" if c2 == "1n" else c2, c_vin5="aucun" if ch == "1n" else ch,
@@ -235,7 +211,7 @@ Rl vcc sw 1.5k
 {d5}
 Chold vin5 che {chold}
 Resrh che 0 0.15
-XU2 vin5 v33 0 AMS1117C
+XU2 vin5 v33 0 AMS1117
 Cdk v33 cdke 22u
 Resrdk cdke 0 0.3
 Iesp0 v33 0 0.08
@@ -264,11 +240,11 @@ for (sn, vs, rs), (mn, on_rail), isv, ch in itertools.product(
     d5 = "Rd5 v5 vin5 0.03" if ch == "cavalier" else "D5 v5 vin5 1N5822"
     chv = "1n" if ch == "cavalier" else ch
     for vto in (-3, -4):
-        out = ng(DYN.format(label=sn, vto=vto, vsrc=vs, rsrc=rs, c2="470u", modules=modules(6, on_rail), d5=d5, chold=chv, iservo=isv), "s8_dyn")
+        out = ng(DYN.format(label=sn, vto=vto, vsrc=vs, rsrc=rs, c2="470u", modules=modules(6, on_rail), d5=d5, chold=chv, iservo=isv), "s7_dyn")
         r = {k: g(out, k) for k in ("v5_min_mod", "v33_min_mod", "v5_min_servo", "v33_min_servo")}
         if worst is None or r["v33_min_servo"] < worst["v33_min_servo"]: worst = r
     row = dict(source=sn, modules=mn, servo_A=isv, c_vin5={"1n": "aucun", "cavalier": "cavalier pose"}.get(ch, ch), **{k: round(v, 2) for k, v in worst.items()})
     res["ffp5cs_bloc_dyn"].append(row)
     print(f"{sn:34}{mn:>22}{isv:7.2f}{row['c_vin5']:>7}{row['v5_min_servo']:9.2f}{row['v33_min_mod']:24.2f}{row['v33_min_servo']:17.2f}")
 
-(OUT / "s8_results.json").write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
+(OUT / "s7_results.json").write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")

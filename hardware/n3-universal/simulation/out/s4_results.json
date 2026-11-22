@@ -35,24 +35,24 @@
   "trise_ns": 27.83399999999985
  },
  "rail5_5V_rs025": {
-  "v5_min_relays": 4.813813,
-  "v5_min_servo": 3.885605,
-  "v33_min_servo": 2.425087,
-  "v33_min_relays": 3.293545,
+  "v5_min_relays": 4.679091,
+  "v5_min_servo": 3.698256,
+  "v33_min_servo": 2.082623,
+  "v33_min_relays": 3.062957,
   "iad_max": null
  },
  "rail5_4V8_rs05": {
-  "v5_min_relays": 4.479021,
-  "v5_min_servo": 2.753921,
-  "v33_min_servo": 1.294537,
-  "v33_min_relays": 3.020185,
+  "v5_min_relays": 4.25946,
+  "v5_min_servo": 2.557464,
+  "v33_min_servo": 0.941726,
+  "v33_min_relays": 2.644028,
   "iad_max": null
  },
  "rail5_5V_vto4": {
-  "v5_min_relays": 4.766069,
-  "v5_min_servo": 3.650843,
-  "v33_min_servo": 2.189778,
-  "v33_min_relays": 3.293545,
+  "v5_min_relays": 4.586611,
+  "v5_min_servo": 3.540919,
+  "v33_min_servo": 1.924645,
+  "v33_min_relays": 2.97091,
   "iad_max": null
  }
 }

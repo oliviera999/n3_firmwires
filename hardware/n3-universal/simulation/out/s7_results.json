@@ -1,1006 +1,2288 @@
 {
- "grille": [
+ "statique": [
   {
-   "rs": 0,
-   "rbm": "1k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 2.429,
-   "icoil_mA": 70.7,
-   "vce": 0.048,
-   "vcoil": 4.952,
-   "ratio_vcoil": 0.99,
-   "colle": true,
-   "igpio_mA": 2.75
+   "profil": "msp1 : boost regle 5,0 V",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.917,
+   "vin5": 4.908,
+   "v33": 3.293,
+   "marge_regul": 0.418
   },
   {
-   "rs": 0,
-   "rbm": "1k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 2.092,
-   "icoil_mA": 82.2,
-   "vce": 0.07,
-   "vcoil": 5.18,
-   "ratio_vcoil": 1.036,
-   "colle": true,
-   "igpio_mA": 2.38
+   "profil": "msp1 : boost regle 5,0 V",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.882,
+   "vin5": 4.873,
+   "v33": 3.293,
+   "marge_regul": 0.383
   },
   {
-   "rs": 0,
-   "rbm": "1k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 2.429,
-   "icoil_mA": 70.7,
-   "vce": 0.049,
-   "vcoil": 4.951,
-   "ratio_vcoil": 0.99,
-   "colle": true,
-   "igpio_mA": 2.75
+   "profil": "msp1 : boost regle 5,0 V",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.917,
+   "vin5": 4.491,
+   "v33": 3.294,
+   "marge_regul": 0.001
   },
   {
-   "rs": 0,
-   "rbm": "1k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 2.092,
-   "icoil_mA": 82.2,
-   "vce": 0.072,
-   "vcoil": 5.178,
-   "ratio_vcoil": 1.036,
-   "colle": true,
-   "igpio_mA": 2.38
+   "profil": "msp1 : boost regle 5,0 V",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.882,
+   "vin5": 4.456,
+   "v33": 3.259,
+   "marge_regul": -0.034
   },
   {
-   "rs": 0,
-   "rbm": "2.2k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 1.132,
-   "icoil_mA": 70.5,
-   "vce": 0.068,
-   "vcoil": 4.932,
-   "ratio_vcoil": 0.986,
-   "colle": true,
-   "igpio_mA": 1.46
+   "profil": "msp1 : boost regle 5,0 V",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.917,
+   "vin5": 4.586,
+   "v33": 3.293,
+   "marge_regul": 0.096
   },
   {
-   "rs": 0,
-   "rbm": "2.2k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.978,
-   "icoil_mA": 62.5,
-   "vce": 1.315,
-   "vcoil": 3.935,
-   "ratio_vcoil": 0.787,
-   "colle": true,
-   "igpio_mA": 1.27
+   "profil": "msp1 : boost regle 5,0 V",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.882,
+   "vin5": 4.551,
+   "v33": 3.293,
+   "marge_regul": 0.061
   },
   {
-   "rs": 0,
-   "rbm": "2.2k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 1.132,
-   "icoil_mA": 70.4,
-   "vce": 0.07,
-   "vcoil": 4.93,
-   "ratio_vcoil": 0.986,
-   "colle": true,
-   "igpio_mA": 1.46
+   "profil": "msp1 : boost regle 5,1 V",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 5.018,
+   "vin5": 5.009,
+   "v33": 3.293,
+   "marge_regul": 0.519
   },
   {
-   "rs": 0,
-   "rbm": "2.2k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.979,
-   "icoil_mA": 58.1,
-   "vce": 1.589,
-   "vcoil": 3.661,
-   "ratio_vcoil": 0.732,
-   "colle": false,
-   "igpio_mA": 1.27
+   "profil": "msp1 : boost regle 5,1 V",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.988,
+   "vin5": 4.979,
+   "v33": 3.293,
+   "marge_regul": 0.489
   },
   {
-   "rs": 0,
-   "rbm": "4.7k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.536,
-   "icoil_mA": 69.7,
-   "vce": 0.12,
-   "vcoil": 4.88,
-   "ratio_vcoil": 0.976,
-   "colle": true,
-   "igpio_mA": 0.86
+   "profil": "msp1 : boost regle 5,1 V",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 5.018,
+   "vin5": 4.593,
+   "v33": 3.293,
+   "marge_regul": 0.103
   },
   {
-   "rs": 0,
-   "rbm": "4.7k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.467,
-   "icoil_mA": 32.5,
-   "vce": 3.203,
-   "vcoil": 2.047,
-   "ratio_vcoil": 0.409,
-   "colle": false,
-   "igpio_mA": 0.76
+   "profil": "msp1 : boost regle 5,1 V",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.988,
+   "vin5": 4.563,
+   "v33": 3.293,
+   "marge_regul": 0.073
   },
   {
-   "rs": 0,
-   "rbm": "4.7k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.536,
-   "icoil_mA": 68.9,
-   "vce": 0.18,
-   "vcoil": 4.82,
-   "ratio_vcoil": 0.964,
-   "colle": true,
-   "igpio_mA": 0.86
+   "profil": "msp1 : boost regle 5,1 V",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 5.018,
+   "vin5": 4.688,
+   "v33": 3.293,
+   "marge_regul": 0.198
   },
   {
-   "rs": 0,
-   "rbm": "4.7k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.468,
-   "icoil_mA": 27.7,
-   "vce": 3.506,
-   "vcoil": 1.744,
-   "ratio_vcoil": 0.349,
-   "colle": false,
-   "igpio_mA": 0.77
+   "profil": "msp1 : boost regle 5,1 V",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.988,
+   "vin5": 4.658,
+   "v33": 3.293,
+   "marge_regul": 0.168
   },
   {
-   "rs": 0,
-   "rbm": "10k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.255,
-   "icoil_mA": 41.7,
-   "vce": 2.084,
-   "vcoil": 2.916,
-   "ratio_vcoil": 0.583,
-   "colle": false,
-   "igpio_mA": 0.58
+   "profil": "msp1 : boost regle 5,2 V",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 5.12,
+   "vin5": 5.111,
+   "v33": 3.293,
+   "marge_regul": 0.621
   },
   {
-   "rs": 0,
-   "rbm": "10k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.222,
-   "icoil_mA": 16.2,
-   "vce": 4.232,
-   "vcoil": 1.018,
-   "ratio_vcoil": 0.204,
-   "colle": false,
-   "igpio_mA": 0.52
+   "profil": "msp1 : boost regle 5,2 V",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 5.094,
+   "vin5": 5.085,
+   "v33": 3.293,
+   "marge_regul": 0.595
   },
   {
-   "rs": 0,
-   "rbm": "10k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.256,
-   "icoil_mA": 31.2,
-   "vce": 2.816,
-   "vcoil": 2.184,
-   "ratio_vcoil": 0.437,
-   "colle": false,
-   "igpio_mA": 0.58
+   "profil": "msp1 : boost regle 5,2 V",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 5.12,
+   "vin5": 4.694,
+   "v33": 3.293,
+   "marge_regul": 0.204
   },
   {
-   "rs": 0,
-   "rbm": "10k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.223,
-   "icoil_mA": 10.9,
-   "vce": 4.561,
-   "vcoil": 0.689,
-   "ratio_vcoil": 0.138,
-   "colle": false,
-   "igpio_mA": 0.52
+   "profil": "msp1 : boost regle 5,2 V",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 5.094,
+   "vin5": 4.668,
+   "v33": 3.293,
+   "marge_regul": 0.178
   },
   {
-   "rs": 220,
-   "rbm": "1k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 1.961,
-   "icoil_mA": 70.7,
-   "vce": 0.052,
-   "vcoil": 4.948,
-   "ratio_vcoil": 0.99,
-   "colle": true,
-   "igpio_mA": 2.23
+   "profil": "msp1 : boost regle 5,2 V",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 5.12,
+   "vin5": 4.789,
+   "v33": 3.293,
+   "marge_regul": 0.299
   },
   {
-   "rs": 220,
-   "rbm": "1k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 1.686,
-   "icoil_mA": 82.0,
-   "vce": 0.086,
-   "vcoil": 5.164,
-   "ratio_vcoil": 1.033,
-   "colle": true,
-   "igpio_mA": 1.94
+   "profil": "msp1 : boost regle 5,2 V",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 5.094,
+   "vin5": 4.763,
+   "v33": 3.293,
+   "marge_regul": 0.273
   },
   {
-   "rs": 220,
-   "rbm": "1k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 1.962,
-   "icoil_mA": 70.7,
-   "vce": 0.053,
-   "vcoil": 4.947,
-   "ratio_vcoil": 0.989,
-   "colle": true,
-   "igpio_mA": 2.23
+   "profil": "n3pp : chargeur 5,0 V, cable 0,25 ohm, 1 module",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.816,
+   "vin5": 4.807,
+   "v33": 3.293,
+   "marge_regul": 0.317
   },
   {
-   "rs": 220,
-   "rbm": "1k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 1.687,
-   "icoil_mA": 81.9,
-   "vce": 0.092,
-   "vcoil": 5.158,
-   "ratio_vcoil": 1.032,
-   "colle": true,
-   "igpio_mA": 1.94
+   "profil": "n3pp : chargeur 5,0 V, cable 0,25 ohm, 1 module",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.767,
+   "vin5": 4.758,
+   "v33": 3.293,
+   "marge_regul": 0.268
   },
   {
-   "rs": 220,
-   "rbm": "2.2k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 1.005,
-   "icoil_mA": 70.4,
-   "vce": 0.072,
-   "vcoil": 4.928,
-   "ratio_vcoil": 0.986,
-   "colle": true,
-   "igpio_mA": 1.3
+   "profil": "n3pp : chargeur 5,0 V, cable 0,25 ohm, 1 module",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.816,
+   "vin5": 4.39,
+   "v33": 3.194,
+   "marge_regul": -0.1
   },
   {
-   "rs": 220,
-   "rbm": "2.2k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.868,
-   "icoil_mA": 56.3,
-   "vce": 1.701,
-   "vcoil": 3.549,
-   "ratio_vcoil": 0.71,
-   "colle": false,
-   "igpio_mA": 1.14
+   "profil": "n3pp : chargeur 5,0 V, cable 0,25 ohm, 1 module",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.767,
+   "vin5": 4.342,
+   "v33": 3.145,
+   "marge_regul": -0.148
   },
   {
-   "rs": 220,
-   "rbm": "2.2k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 1.005,
-   "icoil_mA": 70.3,
-   "vce": 0.076,
-   "vcoil": 4.924,
-   "ratio_vcoil": 0.985,
-   "colle": true,
-   "igpio_mA": 1.3
+   "profil": "n3pp : chargeur 5,0 V, cable 0,25 ohm, 1 module",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.816,
+   "vin5": 4.485,
+   "v33": 3.289,
+   "marge_regul": -0.005
   },
   {
-   "rs": 220,
-   "rbm": "2.2k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.87,
-   "icoil_mA": 51.9,
-   "vce": 1.98,
-   "vcoil": 3.27,
-   "ratio_vcoil": 0.654,
-   "colle": false,
-   "igpio_mA": 1.14
+   "profil": "n3pp : chargeur 5,0 V, cable 0,25 ohm, 1 module",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.767,
+   "vin5": 4.437,
+   "v33": 3.24,
+   "marge_regul": -0.053
   },
   {
-   "rs": 220,
-   "rbm": "4.7k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.499,
-   "icoil_mA": 69.5,
-   "vce": 0.136,
-   "vcoil": 4.864,
-   "ratio_vcoil": 0.973,
-   "colle": true,
-   "igpio_mA": 0.81
+   "profil": "n3pp : chargeur 5,2 V, cable 0,25 ohm, 1 module",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 5.02,
+   "vin5": 5.011,
+   "v33": 3.293,
+   "marge_regul": 0.521
   },
   {
-   "rs": 220,
-   "rbm": "4.7k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.434,
-   "icoil_mA": 30.4,
-   "vce": 3.332,
-   "vcoil": 1.918,
-   "ratio_vcoil": 0.384,
-   "colle": false,
-   "igpio_mA": 0.72
+   "profil": "n3pp : chargeur 5,2 V, cable 0,25 ohm, 1 module",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.985,
+   "vin5": 4.976,
+   "v33": 3.293,
+   "marge_regul": 0.486
   },
   {
-   "rs": 220,
-   "rbm": "4.7k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.499,
-   "icoil_mA": 65.1,
-   "vce": 0.444,
-   "vcoil": 4.556,
-   "ratio_vcoil": 0.911,
-   "colle": true,
-   "igpio_mA": 0.81
+   "profil": "n3pp : chargeur 5,2 V, cable 0,25 ohm, 1 module",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 5.02,
+   "vin5": 4.594,
+   "v33": 3.293,
+   "marge_regul": 0.104
   },
   {
-   "rs": 220,
-   "rbm": "4.7k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.435,
-   "icoil_mA": 25.6,
-   "vce": 3.639,
-   "vcoil": 1.611,
-   "ratio_vcoil": 0.322,
-   "colle": false,
-   "igpio_mA": 0.72
+   "profil": "n3pp : chargeur 5,2 V, cable 0,25 ohm, 1 module",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.985,
+   "vin5": 4.56,
+   "v33": 3.293,
+   "marge_regul": 0.07
   },
   {
-   "rs": 220,
-   "rbm": "10k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.243,
-   "icoil_mA": 39.9,
-   "vce": 2.207,
-   "vcoil": 2.793,
-   "ratio_vcoil": 0.559,
-   "colle": false,
-   "igpio_mA": 0.56
+   "profil": "n3pp : chargeur 5,2 V, cable 0,25 ohm, 1 module",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 5.02,
+   "vin5": 4.689,
+   "v33": 3.293,
+   "marge_regul": 0.199
   },
   {
-   "rs": 220,
-   "rbm": "10k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.212,
-   "icoil_mA": 15.4,
-   "vce": 4.28,
-   "vcoil": 0.97,
-   "ratio_vcoil": 0.194,
-   "colle": false,
-   "igpio_mA": 0.5
+   "profil": "n3pp : chargeur 5,2 V, cable 0,25 ohm, 1 module",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.985,
+   "vin5": 4.655,
+   "v33": 3.293,
+   "marge_regul": 0.165
   },
   {
-   "rs": 220,
-   "rbm": "10k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.244,
-   "icoil_mA": 29.4,
-   "vce": 2.942,
-   "vcoil": 2.058,
-   "ratio_vcoil": 0.412,
-   "colle": false,
-   "igpio_mA": 0.56
+   "profil": "n3pp : chargeur faible 4,8 V, 0,5 ohm, 1 module",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.465,
+   "vin5": 4.456,
+   "v33": 3.259,
+   "marge_regul": -0.034
   },
   {
-   "rs": 220,
-   "rbm": "10k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.213,
-   "icoil_mA": 10.2,
-   "vce": 4.609,
-   "vcoil": 0.641,
-   "ratio_vcoil": 0.128,
-   "colle": false,
-   "igpio_mA": 0.5
+   "profil": "n3pp : chargeur faible 4,8 V, 0,5 ohm, 1 module",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.348,
+   "vin5": 4.339,
+   "v33": 3.142,
+   "marge_regul": -0.151
   },
   {
-   "rs": 470,
-   "rbm": "1k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 1.605,
-   "icoil_mA": 70.6,
-   "vce": 0.057,
-   "vcoil": 4.943,
-   "ratio_vcoil": 0.989,
-   "colle": true,
-   "igpio_mA": 1.84
+   "profil": "n3pp : chargeur faible 4,8 V, 0,5 ohm, 1 module",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.465,
+   "vin5": 4.039,
+   "v33": 2.842,
+   "marge_regul": -0.451
   },
   {
-   "rs": 470,
-   "rbm": "1k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 1.378,
-   "icoil_mA": 81.3,
-   "vce": 0.13,
-   "vcoil": 5.12,
-   "ratio_vcoil": 1.024,
-   "colle": true,
-   "igpio_mA": 1.6
+   "profil": "n3pp : chargeur faible 4,8 V, 0,5 ohm, 1 module",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.348,
+   "vin5": 3.922,
+   "v33": 2.725,
+   "marge_regul": -0.568
   },
   {
-   "rs": 470,
-   "rbm": "1k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 1.606,
-   "icoil_mA": 70.6,
-   "vce": 0.058,
-   "vcoil": 4.941,
-   "ratio_vcoil": 0.988,
-   "colle": true,
-   "igpio_mA": 1.84
+   "profil": "n3pp : chargeur faible 4,8 V, 0,5 ohm, 1 module",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.465,
+   "vin5": 4.134,
+   "v33": 2.937,
+   "marge_regul": -0.356
   },
   {
-   "rs": 470,
-   "rbm": "1k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 1.378,
-   "icoil_mA": 79.5,
-   "vce": 0.242,
-   "vcoil": 5.008,
-   "ratio_vcoil": 1.002,
-   "colle": true,
-   "igpio_mA": 1.6
+   "profil": "n3pp : chargeur faible 4,8 V, 0,5 ohm, 1 module",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.348,
+   "vin5": 4.017,
+   "v33": 2.821,
+   "marge_regul": -0.473
   },
   {
-   "rs": 470,
-   "rbm": "2.2k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.89,
-   "icoil_mA": 70.3,
-   "vce": 0.078,
-   "vcoil": 4.922,
-   "ratio_vcoil": 0.984,
-   "colle": true,
-   "igpio_mA": 1.16
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.789,
+   "vin5": 4.78,
+   "v33": 3.293,
+   "marge_regul": 0.29
   },
   {
-   "rs": 470,
-   "rbm": "2.2k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.769,
-   "icoil_mA": 50.7,
-   "vce": 2.059,
-   "vcoil": 3.191,
-   "ratio_vcoil": 0.638,
-   "colle": false,
-   "igpio_mA": 1.02
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.703,
+   "vin5": 4.694,
+   "v33": 3.293,
+   "marge_regul": 0.204
   },
   {
-   "rs": 470,
-   "rbm": "2.2k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.89,
-   "icoil_mA": 70.3,
-   "vce": 0.082,
-   "vcoil": 4.918,
-   "ratio_vcoil": 0.984,
-   "colle": true,
-   "igpio_mA": 1.16
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.789,
+   "vin5": 4.364,
+   "v33": 3.167,
+   "marge_regul": -0.126
   },
   {
-   "rs": 470,
-   "rbm": "2.2k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.77,
-   "icoil_mA": 46.1,
-   "vce": 2.344,
-   "vcoil": 2.906,
-   "ratio_vcoil": 0.581,
-   "colle": false,
-   "igpio_mA": 1.02
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.703,
+   "vin5": 4.277,
+   "v33": 3.081,
+   "marge_regul": -0.213
   },
   {
-   "rs": 470,
-   "rbm": "4.7k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.462,
-   "icoil_mA": 68.9,
-   "vce": 0.179,
-   "vcoil": 4.821,
-   "ratio_vcoil": 0.964,
-   "colle": true,
-   "igpio_mA": 0.75
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.789,
+   "vin5": 4.459,
+   "v33": 3.262,
+   "marge_regul": -0.031
   },
   {
-   "rs": 470,
-   "rbm": "4.7k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.402,
-   "icoil_mA": 28.4,
-   "vce": 3.462,
-   "vcoil": 1.788,
-   "ratio_vcoil": 0.358,
-   "colle": false,
-   "igpio_mA": 0.67
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.703,
+   "vin5": 4.372,
+   "v33": 3.176,
+   "marge_regul": -0.118
   },
   {
-   "rs": 470,
-   "rbm": "4.7k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.463,
-   "icoil_mA": 60.3,
-   "vce": 0.78,
-   "vcoil": 4.22,
-   "ratio_vcoil": 0.844,
-   "colle": true,
-   "igpio_mA": 0.75
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 2 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.857,
+   "vin5": 4.848,
+   "v33": 3.293,
+   "marge_regul": 0.358
   },
   {
-   "rs": 470,
-   "rbm": "4.7k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.403,
-   "icoil_mA": 23.4,
-   "vce": 3.776,
-   "vcoil": 1.474,
-   "ratio_vcoil": 0.295,
-   "colle": false,
-   "igpio_mA": 0.67
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 2 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.805,
+   "vin5": 4.796,
+   "v33": 3.293,
+   "marge_regul": 0.306
   },
   {
-   "rs": 470,
-   "rbm": "10k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.231,
-   "icoil_mA": 38.1,
-   "vce": 2.335,
-   "vcoil": 2.665,
-   "ratio_vcoil": 0.533,
-   "colle": false,
-   "igpio_mA": 0.53
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 2 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.857,
+   "vin5": 4.431,
+   "v33": 3.234,
+   "marge_regul": -0.059
   },
   {
-   "rs": 470,
-   "rbm": "10k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.201,
-   "icoil_mA": 14.6,
-   "vce": 4.33,
-   "vcoil": 0.92,
-   "ratio_vcoil": 0.184,
-   "colle": false,
-   "igpio_mA": 0.48
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 2 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.805,
+   "vin5": 4.38,
+   "v33": 3.183,
+   "marge_regul": -0.11
   },
   {
-   "rs": 470,
-   "rbm": "10k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.232,
-   "icoil_mA": 27.5,
-   "vce": 3.074,
-   "vcoil": 1.926,
-   "ratio_vcoil": 0.385,
-   "colle": false,
-   "igpio_mA": 0.53
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 2 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.857,
+   "vin5": 4.526,
+   "v33": 3.293,
+   "marge_regul": 0.036
   },
   {
-   "rs": 470,
-   "rbm": "10k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.202,
-   "icoil_mA": 9.4,
-   "vce": 4.659,
-   "vcoil": 0.591,
-   "ratio_vcoil": 0.118,
-   "colle": false,
-   "igpio_mA": 0.48
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, 2 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.805,
+   "vin5": 4.475,
+   "v33": 3.278,
+   "marge_regul": -0.015
   },
   {
-   "rs": 1000,
-   "rbm": "1k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 1.152,
-   "icoil_mA": 70.5,
-   "vce": 0.067,
-   "vcoil": 4.933,
-   "ratio_vcoil": 0.987,
-   "colle": true,
-   "igpio_mA": 1.34
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, modules en direct sur le bloc",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.89,
+   "vin5": 4.881,
+   "v33": 3.293,
+   "marge_regul": 0.391
   },
   {
-   "rs": 1000,
-   "rbm": "1k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.989,
-   "icoil_mA": 63.0,
-   "vce": 1.278,
-   "vcoil": 3.972,
-   "ratio_vcoil": 0.794,
-   "colle": true,
-   "igpio_mA": 1.17
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, modules en direct sur le bloc",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.853,
+   "vin5": 4.844,
+   "v33": 3.293,
+   "marge_regul": 0.354
   },
   {
-   "rs": 1000,
-   "rbm": "1k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 1.152,
-   "icoil_mA": 70.4,
-   "vce": 0.07,
-   "vcoil": 4.93,
-   "ratio_vcoil": 0.986,
-   "colle": true,
-   "igpio_mA": 1.34
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, modules en direct sur le bloc",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.89,
+   "vin5": 4.464,
+   "v33": 3.268,
+   "marge_regul": -0.026
   },
   {
-   "rs": 1000,
-   "rbm": "1k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.99,
-   "icoil_mA": 58.7,
-   "vce": 1.552,
-   "vcoil": 3.698,
-   "ratio_vcoil": 0.74,
-   "colle": false,
-   "igpio_mA": 1.17
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, modules en direct sur le bloc",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.853,
+   "vin5": 4.427,
+   "v33": 3.23,
+   "marge_regul": -0.063
   },
   {
-   "rs": 1000,
-   "rbm": "2.2k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.713,
-   "icoil_mA": 70.1,
-   "vce": 0.09,
-   "vcoil": 4.91,
-   "ratio_vcoil": 0.982,
-   "colle": true,
-   "igpio_mA": 0.94
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, modules en direct sur le bloc",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.89,
+   "vin5": 4.559,
+   "v33": 3.293,
+   "marge_regul": 0.069
   },
   {
-   "rs": 1000,
-   "rbm": "2.2k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.616,
-   "icoil_mA": 41.6,
-   "vce": 2.628,
-   "vcoil": 2.622,
-   "ratio_vcoil": 0.524,
-   "colle": false,
-   "igpio_mA": 0.83
+   "profil": "ffp5cs : bloc 5,0 V, 0,15 ohm, modules en direct sur le bloc",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.853,
+   "vin5": 4.522,
+   "v33": 3.293,
+   "marge_regul": 0.032
   },
   {
-   "rs": 1000,
-   "rbm": "2.2k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.713,
-   "icoil_mA": 70.0,
-   "vce": 0.099,
-   "vcoil": 4.901,
-   "ratio_vcoil": 0.98,
-   "colle": true,
-   "igpio_mA": 0.95
+   "profil": "ffp5cs : bloc 5,1 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.893,
+   "vin5": 4.884,
+   "v33": 3.293,
+   "marge_regul": 0.394
   },
   {
-   "rs": 1000,
-   "rbm": "2.2k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.617,
-   "icoil_mA": 37.0,
-   "vce": 2.921,
-   "vcoil": 2.329,
-   "ratio_vcoil": 0.466,
-   "colle": false,
-   "igpio_mA": 0.83
+   "profil": "ffp5cs : bloc 5,1 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.822,
+   "vin5": 4.813,
+   "v33": 3.293,
+   "marge_regul": 0.323
   },
   {
-   "rs": 1000,
-   "rbm": "4.7k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.399,
-   "icoil_mA": 61.6,
-   "vce": 0.689,
-   "vcoil": 4.311,
-   "ratio_vcoil": 0.862,
-   "colle": true,
-   "igpio_mA": 0.66
+   "profil": "ffp5cs : bloc 5,1 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.893,
+   "vin5": 4.467,
+   "v33": 3.27,
+   "marge_regul": -0.023
   },
   {
-   "rs": 1000,
-   "rbm": "4.7k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.346,
-   "icoil_mA": 24.7,
-   "vce": 3.694,
-   "vcoil": 1.556,
-   "ratio_vcoil": 0.311,
-   "colle": false,
-   "igpio_mA": 0.59
+   "profil": "ffp5cs : bloc 5,1 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.822,
+   "vin5": 4.396,
+   "v33": 3.199,
+   "marge_regul": -0.094
   },
   {
-   "rs": 1000,
-   "rbm": "4.7k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.4,
-   "icoil_mA": 51.8,
-   "vce": 1.376,
-   "vcoil": 3.624,
-   "ratio_vcoil": 0.725,
-   "colle": false,
-   "igpio_mA": 0.66
+   "profil": "ffp5cs : bloc 5,1 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.893,
+   "vin5": 4.562,
+   "v33": 3.293,
+   "marge_regul": 0.072
   },
   {
-   "rs": 1000,
-   "rbm": "4.7k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.347,
-   "icoil_mA": 19.6,
-   "vce": 4.018,
-   "vcoil": 1.232,
-   "ratio_vcoil": 0.246,
-   "colle": false,
-   "igpio_mA": 0.59
+   "profil": "ffp5cs : bloc 5,1 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.822,
+   "vin5": 4.491,
+   "v33": 3.294,
+   "marge_regul": 0.001
   },
   {
-   "rs": 1000,
-   "rbm": "10k",
-   "rbe": "aucune",
-   "coin": "nominal",
-   "ib_mA": 0.208,
-   "icoil_mA": 34.6,
-   "vce": 2.575,
-   "vcoil": 2.425,
-   "ratio_vcoil": 0.485,
-   "colle": false,
-   "igpio_mA": 0.49
+   "profil": "ffp5cs : bloc 5,2 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.996,
+   "vin5": 4.987,
+   "v33": 3.293,
+   "marge_regul": 0.497
   },
   {
-   "rs": 1000,
-   "rbm": "10k",
-   "rbe": "aucune",
-   "coin": "defavorable",
-   "ib_mA": 0.18,
-   "icoil_mA": 13.1,
-   "vce": 4.422,
-   "vcoil": 0.828,
-   "ratio_vcoil": 0.166,
-   "colle": false,
-   "igpio_mA": 0.43
+   "profil": "ffp5cs : bloc 5,2 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.936,
+   "vin5": 4.927,
+   "v33": 3.293,
+   "marge_regul": 0.437
   },
   {
-   "rs": 1000,
-   "rbm": "10k",
-   "rbe": "10k",
-   "coin": "nominal",
-   "ib_mA": 0.209,
-   "icoil_mA": 23.9,
-   "vce": 3.324,
-   "vcoil": 1.676,
-   "ratio_vcoil": 0.335,
-   "colle": false,
-   "igpio_mA": 0.49
+   "profil": "ffp5cs : bloc 5,2 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.996,
+   "vin5": 4.57,
+   "v33": 3.293,
+   "marge_regul": 0.08
   },
   {
-   "rs": 1000,
-   "rbm": "10k",
-   "rbe": "10k",
-   "coin": "defavorable",
-   "ib_mA": 0.181,
-   "icoil_mA": 7.9,
-   "vce": 4.751,
-   "vcoil": 0.499,
-   "ratio_vcoil": 0.1,
-   "colle": false,
-   "igpio_mA": 0.44
+   "profil": "ffp5cs : bloc 5,2 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.936,
+   "vin5": 4.51,
+   "v33": 3.293,
+   "marge_regul": 0.02
+  },
+  {
+   "profil": "ffp5cs : bloc 5,2 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.996,
+   "vin5": 4.665,
+   "v33": 3.293,
+   "marge_regul": 0.175
+  },
+  {
+   "profil": "ffp5cs : bloc 5,2 V, 0,15 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.936,
+   "vin5": 4.605,
+   "v33": 3.293,
+   "marge_regul": 0.115
+  },
+  {
+   "profil": "ffp5cs : bloc 5,0 V, cordon fin 0,30 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.643,
+   "vin5": 4.633,
+   "v33": 3.293,
+   "marge_regul": 0.143
+  },
+  {
+   "profil": "ffp5cs : bloc 5,0 V, cordon fin 0,30 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.523,
+   "vin5": 4.513,
+   "v33": 3.293,
+   "marge_regul": 0.023
+  },
+  {
+   "profil": "ffp5cs : bloc 5,0 V, cordon fin 0,30 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.643,
+   "vin5": 4.217,
+   "v33": 3.02,
+   "marge_regul": -0.273
+  },
+  {
+   "profil": "ffp5cs : bloc 5,0 V, cordon fin 0,30 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.523,
+   "vin5": 4.097,
+   "v33": 2.9,
+   "marge_regul": -0.393
+  },
+  {
+   "profil": "ffp5cs : bloc 5,0 V, cordon fin 0,30 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.643,
+   "vin5": 4.312,
+   "v33": 3.115,
+   "marge_regul": -0.178
+  },
+  {
+   "profil": "ffp5cs : bloc 5,0 V, cordon fin 0,30 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.523,
+   "vin5": 4.192,
+   "v33": 2.995,
+   "marge_regul": -0.298
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,1 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.941,
+   "vin5": 4.932,
+   "v33": 3.293,
+   "marge_regul": 0.442
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,1 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.876,
+   "vin5": 4.867,
+   "v33": 3.293,
+   "marge_regul": 0.377
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,1 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.941,
+   "vin5": 4.516,
+   "v33": 3.293,
+   "marge_regul": 0.026
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,1 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.876,
+   "vin5": 4.45,
+   "v33": 3.253,
+   "marge_regul": -0.04
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,1 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.941,
+   "vin5": 4.611,
+   "v33": 3.293,
+   "marge_regul": 0.121
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,1 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.876,
+   "vin5": 4.545,
+   "v33": 3.293,
+   "marge_regul": 0.055
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,0 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -3,
+   "v5": 4.838,
+   "vin5": 4.829,
+   "v33": 3.293,
+   "marge_regul": 0.339
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,0 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "fil (0.2.3)",
+   "vto": -4,
+   "v5": 4.76,
+   "vin5": 4.75,
+   "v33": 3.293,
+   "marge_regul": 0.26
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,0 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -3,
+   "v5": 4.838,
+   "vin5": 4.412,
+   "v33": 3.216,
+   "marge_regul": -0.078
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,0 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "1N5822 max",
+   "vto": -4,
+   "v5": 4.76,
+   "vin5": 4.334,
+   "v33": 3.137,
+   "marge_regul": -0.156
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,0 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -3,
+   "v5": 4.838,
+   "vin5": 4.507,
+   "v33": 3.293,
+   "marge_regul": 0.017
+  },
+  {
+   "profil": "ffp5cs 12 V : buck regle 5,0 V, 0,10 ohm, 6 modules sur le rail",
+   "d5": "1N5822 typ",
+   "vto": -4,
+   "v5": 4.76,
+   "vin5": 4.429,
+   "v33": 3.232,
+   "marge_regul": -0.061
   }
  ],
- "mc_rs470": {
-  "n": 150,
-  "vce_max": 0.08092765,
-  "vce_med": 0.05651861,
-  "vcoil_min": 4.442494,
-  "ratio_min": 0.9833701075268816,
-  "ib_min_mA": 1.369048,
-  "igpio_max_mA": 1.8734730000000002,
-  "n_sous_3V75": 0
- },
- "mc_rs1000": {
-  "n": 150,
-  "vce_max": 0.1861991,
-  "vce_med": 0.06425417,
-  "vcoil_min": 4.437728,
-  "ratio_min": 0.9618913221449038,
-  "ib_min_mA": 0.9498901999999999,
-  "igpio_max_mA": 1.375874,
-  "n_sous_3V75": 0
- },
- "forcage": {
-  "220": {
-   "on_gpio_bas": {
-    "igpio_mA": -12.69,
-    "vline": 3.3,
-    "vcoil": 4.953,
-    "i33_mA": 15.56,
-    "p_rs_mW": 35.4
-   },
-   "off_gpio_haut": {
-    "igpio_mA": 12.69,
-    "vline": 0.0,
-    "icoil_mA": 0.0
-   },
-   "on_gpio_flottant": {
-    "vgpio": 3.3,
-    "vcoil": 4.953
-   }
+ "vsource_min": [
+  {
+   "profil": "msp1 (R 0.1 ohm, rail 35 mA)",
+   "pire": 4.95,
+   "typique": 4.81,
+   "fil_typique": 4.5
   },
-  "470": {
-   "on_gpio_bas": {
-    "igpio_mA": -6.47,
-    "vline": 3.3,
-    "vcoil": 4.953,
-    "i33_mA": 9.34,
-    "p_rs_mW": 19.7
-   },
-   "off_gpio_haut": {
-    "igpio_mA": 6.47,
-    "vline": 0.0,
-    "icoil_mA": 0.0
-   },
-   "on_gpio_flottant": {
-    "vgpio": 3.3,
-    "vcoil": 4.953
-   }
+  {
+   "profil": "n3pp (R 0.25 ohm, rail 114 mA)",
+   "pire": 5.05,
+   "typique": 4.91,
+   "fil_typique": 4.6
   },
-  "1000": {
-   "on_gpio_bas": {
-    "igpio_mA": -3.17,
-    "vline": 3.3,
-    "vcoil": 4.953,
-    "i33_mA": 6.04,
-    "p_rs_mW": 10.1
-   },
-   "off_gpio_haut": {
-    "igpio_mA": 3.17,
-    "vline": 0.0,
-    "icoil_mA": 0.0
-   },
-   "on_gpio_flottant": {
-    "vgpio": 3.3,
-    "vcoil": 4.953
-   }
+  {
+   "profil": "ffp5cs (R 0.15 ohm, rail 487 mA)",
+   "pire": 5.1,
+   "typique": 4.94,
+   "fil_typique": 4.63
+  },
+  {
+   "profil": "ffp5cs (R 0.15 ohm, rail 43 mA)",
+   "pire": 4.97,
+   "typique": 4.84,
+   "fil_typique": 4.53
+  },
+  {
+   "profil": "ffp5cs 12 V (R 0.1 ohm, rail 487 mA)",
+   "pire": 5.05,
+   "typique": 4.89,
+   "fil_typique": 4.59
   }
- },
- "demarrage": {
-  "470": {
-   "flottant": {
-    "vline": 1.894663e-07,
-    "icoil_mA": 1.8183279999999998e-08
-   },
-   "pullup_45k": {
-    "vline": 0.567,
-    "ib_uA": 3.36,
-    "icoil_mA": 1.37,
-    "vcoil": 0.096
-   },
-   "pullup_30k": {
-    "vline": 0.645,
-    "ib_uA": 22.66,
-    "icoil_mA": 9.65,
-    "vcoil": 0.675
-   },
-   "pullup_10k": {
-    "vline": 0.838,
-    "ib_uA": 151.32,
-    "icoil_mA": 57.82,
-    "vcoil": 4.047
-   },
-   "pullup_45k_SANS_rappel": {
-    "vline": 0.709,
-    "icoil_mA": 23.96,
-    "vcoil": 1.677
-   }
+ ],
+ "usb_seul_cavalier_pose": [
+  {
+   "vusb": 5.0,
+   "r_cable": 0.3,
+   "modules": 0,
+   "i_devkit": 0.125,
+   "rail": 4.58,
+   "v33_devkit": 3.3,
+   "i_usb_mA": 170,
+   "u1_regule": true
   },
-  "1000": {
-   "flottant": {
-    "vline": 1.894663e-07,
-    "icoil_mA": 1.8183279999999998e-08
-   },
-   "pullup_45k": {
-    "vline": 0.564,
-    "ib_uA": 3.05,
-    "icoil_mA": 1.24,
-    "vcoil": 0.087
-   },
-   "pullup_30k": {
-    "vline": 0.642,
-    "ib_uA": 21.53,
-    "icoil_mA": 9.17,
-    "vcoil": 0.642
-   },
-   "pullup_10k": {
-    "vline": 0.827,
-    "ib_uA": 142.2,
-    "icoil_mA": 54.75,
-    "vcoil": 3.833
-   },
-   "pullup_45k_SANS_rappel": {
-    "vline": 0.708,
-    "icoil_mA": 23.71,
-    "vcoil": 1.66
-   }
+  {
+   "vusb": 5.0,
+   "r_cable": 0.3,
+   "modules": 0,
+   "i_devkit": 0.45,
+   "rail": 4.43,
+   "v33_devkit": 3.23,
+   "i_usb_mA": 495,
+   "u1_regule": true
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.3,
+   "modules": 1,
+   "i_devkit": 0.125,
+   "rail": 4.54,
+   "v33_devkit": 3.3,
+   "i_usb_mA": 244,
+   "u1_regule": true
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.3,
+   "modules": 1,
+   "i_devkit": 0.45,
+   "rail": 4.4,
+   "v33_devkit": 3.2,
+   "i_usb_mA": 569,
+   "u1_regule": true
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.3,
+   "modules": 2,
+   "i_devkit": 0.125,
+   "rail": 4.5,
+   "v33_devkit": 3.3,
+   "i_usb_mA": 318,
+   "u1_regule": true
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.3,
+   "modules": 2,
+   "i_devkit": 0.45,
+   "rail": 4.37,
+   "v33_devkit": 3.18,
+   "i_usb_mA": 643,
+   "u1_regule": true
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.6,
+   "modules": 0,
+   "i_devkit": 0.125,
+   "rail": 4.53,
+   "v33_devkit": 3.3,
+   "i_usb_mA": 170,
+   "u1_regule": true
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.6,
+   "modules": 0,
+   "i_devkit": 0.45,
+   "rail": 4.28,
+   "v33_devkit": 3.09,
+   "i_usb_mA": 495,
+   "u1_regule": false
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.6,
+   "modules": 1,
+   "i_devkit": 0.125,
+   "rail": 4.47,
+   "v33_devkit": 3.3,
+   "i_usb_mA": 244,
+   "u1_regule": true
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.6,
+   "modules": 1,
+   "i_devkit": 0.45,
+   "rail": 4.23,
+   "v33_devkit": 3.03,
+   "i_usb_mA": 569,
+   "u1_regule": false
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.6,
+   "modules": 2,
+   "i_devkit": 0.125,
+   "rail": 4.41,
+   "v33_devkit": 3.29,
+   "i_usb_mA": 318,
+   "u1_regule": true
+  },
+  {
+   "vusb": 5.0,
+   "r_cable": 0.6,
+   "modules": 2,
+   "i_devkit": 0.45,
+   "rail": 4.17,
+   "v33_devkit": 2.98,
+   "i_usb_mA": 643,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.3,
+   "modules": 0,
+   "i_devkit": 0.125,
+   "rail": 4.33,
+   "v33_devkit": 3.2,
+   "i_usb_mA": 170,
+   "u1_regule": true
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.3,
+   "modules": 0,
+   "i_devkit": 0.45,
+   "rail": 4.18,
+   "v33_devkit": 2.99,
+   "i_usb_mA": 495,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.3,
+   "modules": 1,
+   "i_devkit": 0.125,
+   "rail": 4.29,
+   "v33_devkit": 3.17,
+   "i_usb_mA": 244,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.3,
+   "modules": 1,
+   "i_devkit": 0.45,
+   "rail": 4.15,
+   "v33_devkit": 2.96,
+   "i_usb_mA": 569,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.3,
+   "modules": 2,
+   "i_devkit": 0.125,
+   "rail": 4.25,
+   "v33_devkit": 3.13,
+   "i_usb_mA": 318,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.3,
+   "modules": 2,
+   "i_devkit": 0.45,
+   "rail": 4.12,
+   "v33_devkit": 2.93,
+   "i_usb_mA": 643,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.6,
+   "modules": 0,
+   "i_devkit": 0.125,
+   "rail": 4.28,
+   "v33_devkit": 3.15,
+   "i_usb_mA": 170,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.6,
+   "modules": 0,
+   "i_devkit": 0.45,
+   "rail": 4.03,
+   "v33_devkit": 2.84,
+   "i_usb_mA": 495,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.6,
+   "modules": 1,
+   "i_devkit": 0.125,
+   "rail": 4.22,
+   "v33_devkit": 3.09,
+   "i_usb_mA": 244,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.6,
+   "modules": 1,
+   "i_devkit": 0.45,
+   "rail": 3.98,
+   "v33_devkit": 2.78,
+   "i_usb_mA": 569,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.6,
+   "modules": 2,
+   "i_devkit": 0.125,
+   "rail": 4.16,
+   "v33_devkit": 3.04,
+   "i_usb_mA": 318,
+   "u1_regule": false
+  },
+  {
+   "vusb": 4.75,
+   "r_cable": 0.6,
+   "modules": 2,
+   "i_devkit": 0.45,
+   "rail": 3.92,
+   "v33_devkit": 2.73,
+   "i_usb_mA": 643,
+   "u1_regule": false
   }
- },
- "seuil_ligne_60C": {
-  "65": {
-   "v_ligne_pour_7mA": 0.7200000000000004,
-   "v_ligne_pour_3V75": 1.5200000000000011
+ ],
+ "usb_et_alim": [
+  {
+   "cavalier": "ote",
+   "alim": 5.1,
+   "rail": 4.98,
+   "vin5": 4.61,
+   "i_usb_mA": 119,
+   "i_alim_mA": 573
   },
-  "400": {
-   "v_ligne_pour_7mA": 0.6400000000000003,
-   "v_ligne_pour_3V75": 0.8400000000000005
+  {
+   "cavalier": "ote",
+   "alim": 4.8,
+   "rail": 4.69,
+   "vin5": 4.56,
+   "i_usb_mA": 205,
+   "i_alim_mA": 488
+  },
+  {
+   "cavalier": "ote",
+   "alim": "absente",
+   "rail": 0.0,
+   "vin5": 4.56,
+   "i_usb_mA": 205,
+   "i_alim_mA": 0
+  },
+  {
+   "cavalier": "pose (INTERDIT)",
+   "alim": 5.1,
+   "rail": 4.95,
+   "vin5": 4.94,
+   "i_usb_mA": 0,
+   "i_alim_mA": 692
+  },
+  {
+   "cavalier": "pose (INTERDIT)",
+   "alim": 4.8,
+   "rail": 4.66,
+   "vin5": 4.65,
+   "i_usb_mA": 62,
+   "i_alim_mA": 630
+  },
+  {
+   "cavalier": "pose (INTERDIT)",
+   "alim": "absente",
+   "rail": 4.34,
+   "vin5": 4.35,
+   "i_usb_mA": 692,
+   "i_alim_mA": 0
   }
- },
- "glitch_60us": {
-  "rs470_L50mH": {
-   "icoil_pk_mA": 6.0
+ ],
+ "q7_sur_c2_vide": [
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "fil",
+   "c2": "470u",
+   "c_vin5": "aucun",
+   "v5_min": 3.64,
+   "v33_avant": 3.3,
+   "v33_min": 2.52,
+   "ms_sous_3V0": 1.33
   },
-  "rs470_L100mH": {
-   "icoil_pk_mA": 3.07
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "fil",
+   "c2": "100u",
+   "c_vin5": "aucun",
+   "v5_min": 4.24,
+   "v33_avant": 3.3,
+   "v33_min": 3.1,
+   "ms_sous_3V0": 0.0
   },
-  "rs1000_L50mH": {
-   "icoil_pk_mA": 6.0
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "fil",
+   "c2": "non pose",
+   "c_vin5": "aucun",
+   "v5_min": 4.54,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
   },
-  "rs1000_L100mH": {
-   "icoil_pk_mA": 3.07
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "aucun",
+   "v5_min": 3.64,
+   "v33_avant": 3.3,
+   "v33_min": 2.16,
+   "ms_sous_3V0": 2.02
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "100u",
+   "v5_min": 3.65,
+   "v33_avant": 3.3,
+   "v33_min": 2.67,
+   "ms_sous_3V0": 1.2
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "220u",
+   "v5_min": 3.65,
+   "v33_avant": 3.3,
+   "v33_min": 2.97,
+   "ms_sous_3V0": 0.28
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "470u",
+   "v5_min": 3.83,
+   "v33_avant": 3.3,
+   "v33_min": 3.22,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "aucun",
+   "v5_min": 4.24,
+   "v33_avant": 3.3,
+   "v33_min": 2.74,
+   "ms_sous_3V0": 0.2
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "100u",
+   "v5_min": 4.42,
+   "v33_avant": 3.3,
+   "v33_min": 3.26,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "220u",
+   "v5_min": 4.24,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "470u",
+   "v5_min": 4.24,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "aucun",
+   "v5_min": 4.55,
+   "v33_avant": 3.3,
+   "v33_min": 3.16,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "100u",
+   "v5_min": 4.55,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "220u",
+   "v5_min": 4.55,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,1 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "470u",
+   "v5_min": 4.55,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "fil",
+   "c2": "470u",
+   "c_vin5": "aucun",
+   "v5_min": 3.58,
+   "v33_avant": 3.3,
+   "v33_min": 2.46,
+   "ms_sous_3V0": 1.45
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "fil",
+   "c2": "100u",
+   "c_vin5": "aucun",
+   "v5_min": 4.17,
+   "v33_avant": 3.3,
+   "v33_min": 3.02,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "fil",
+   "c2": "non pose",
+   "c_vin5": "aucun",
+   "v5_min": 4.46,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "aucun",
+   "v5_min": 3.58,
+   "v33_avant": 3.3,
+   "v33_min": 2.1,
+   "ms_sous_3V0": 2.14
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "100u",
+   "v5_min": 3.59,
+   "v33_avant": 3.3,
+   "v33_min": 2.6,
+   "ms_sous_3V0": 1.44
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "220u",
+   "v5_min": 3.59,
+   "v33_avant": 3.3,
+   "v33_min": 2.89,
+   "ms_sous_3V0": 0.69
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "470u",
+   "v5_min": 3.79,
+   "v33_avant": 3.3,
+   "v33_min": 3.13,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "aucun",
+   "v5_min": 4.17,
+   "v33_avant": 3.3,
+   "v33_min": 2.65,
+   "ms_sous_3V0": 0.3
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "100u",
+   "v5_min": 4.35,
+   "v33_avant": 3.3,
+   "v33_min": 3.17,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "220u",
+   "v5_min": 4.35,
+   "v33_avant": 3.3,
+   "v33_min": 3.29,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "470u",
+   "v5_min": 4.17,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "aucun",
+   "v5_min": 4.47,
+   "v33_avant": 3.3,
+   "v33_min": 3.03,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "100u",
+   "v5_min": 4.47,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "220u",
+   "v5_min": 4.47,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "msp1 : boost 5,0 V limite a 1 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "470u",
+   "v5_min": 4.47,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "fil",
+   "c2": "470u",
+   "c_vin5": "aucun",
+   "v5_min": 3.98,
+   "v33_avant": 3.3,
+   "v33_min": 2.87,
+   "ms_sous_3V0": 0.3
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "fil",
+   "c2": "100u",
+   "c_vin5": "aucun",
+   "v5_min": 4.18,
+   "v33_avant": 3.3,
+   "v33_min": 3.07,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "fil",
+   "c2": "non pose",
+   "c_vin5": "aucun",
+   "v5_min": 4.34,
+   "v33_avant": 3.3,
+   "v33_min": 3.26,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "aucun",
+   "v5_min": 3.99,
+   "v33_avant": 3.3,
+   "v33_min": 2.51,
+   "ms_sous_3V0": 0.72
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "100u",
+   "v5_min": 4.14,
+   "v33_avant": 3.3,
+   "v33_min": 2.93,
+   "ms_sous_3V0": 0.27
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "220u",
+   "v5_min": 4.14,
+   "v33_avant": 3.3,
+   "v33_min": 3.12,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "470u",
+   "v5_min": 4.14,
+   "v33_avant": 3.3,
+   "v33_min": 3.26,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "aucun",
+   "v5_min": 4.18,
+   "v33_avant": 3.3,
+   "v33_min": 2.66,
+   "ms_sous_3V0": 0.14
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "100u",
+   "v5_min": 4.42,
+   "v33_avant": 3.3,
+   "v33_min": 3.22,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "220u",
+   "v5_min": 4.18,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "470u",
+   "v5_min": 4.18,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "aucun",
+   "v5_min": 4.34,
+   "v33_avant": 3.3,
+   "v33_min": 2.93,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "100u",
+   "v5_min": 4.34,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "220u",
+   "v5_min": 4.34,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "n3pp : bloc 5,0 V / 0,25 ohm",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "470u",
+   "v5_min": 4.34,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "fil",
+   "c2": "470u",
+   "c_vin5": "aucun",
+   "v5_min": 4.07,
+   "v33_avant": 3.3,
+   "v33_min": 2.95,
+   "ms_sous_3V0": 0.17
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "fil",
+   "c2": "100u",
+   "c_vin5": "aucun",
+   "v5_min": 4.42,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "fil",
+   "c2": "non pose",
+   "c_vin5": "aucun",
+   "v5_min": 4.72,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "aucun",
+   "v5_min": 4.07,
+   "v33_avant": 3.3,
+   "v33_min": 2.59,
+   "ms_sous_3V0": 0.54
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "100u",
+   "v5_min": 4.33,
+   "v33_avant": 3.3,
+   "v33_min": 3.14,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "220u",
+   "v5_min": 4.08,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "470u",
+   "c_vin5": "470u",
+   "v5_min": 4.08,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "aucun",
+   "v5_min": 4.42,
+   "v33_avant": 3.3,
+   "v33_min": 3.0,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "100u",
+   "v5_min": 4.42,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "220u",
+   "v5_min": 4.42,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "100u",
+   "c_vin5": "470u",
+   "v5_min": 4.42,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "aucun",
+   "v5_min": 4.72,
+   "v33_avant": 3.3,
+   "v33_min": 3.27,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "100u",
+   "v5_min": 4.73,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "220u",
+   "v5_min": 4.73,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
+  },
+  {
+   "source": "ffp5cs 12 V (option 9.9) : buck 5,1 V / 0,10 ohm limite a 3 A",
+   "d5": "1N5822",
+   "c2": "non pose",
+   "c_vin5": "470u",
+   "v5_min": 4.73,
+   "v33_avant": 3.3,
+   "v33_min": 3.3,
+   "ms_sous_3V0": 0.0
   }
- },
- "gpio45_reset": {
-  "470": {
-   "auto_vgpio": 0.0,
-   "on_force_vgpio": 3.266
+ ],
+ "ffp5cs_bloc_dyn": [
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.72,
+   "v33_min_mod": 3.11,
+   "v5_min_servo": 4.47,
+   "v33_min_servo": 2.85
   },
-  "1000": {
-   "auto_vgpio": 0.0,
-   "on_force_vgpio": 3.228
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.73,
+   "v33_min_mod": 3.11,
+   "v5_min_servo": 4.48,
+   "v33_min_servo": 2.86
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.72,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.47,
+   "v33_min_servo": 3.26
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.72,
+   "v33_min_mod": 3.11,
+   "v5_min_servo": 4.14,
+   "v33_min_servo": 2.52
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.73,
+   "v33_min_mod": 3.11,
+   "v5_min_servo": 4.15,
+   "v33_min_servo": 2.53
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.72,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.14,
+   "v33_min_servo": 2.94
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.86,
+   "v33_min_mod": 3.25,
+   "v5_min_servo": 4.64,
+   "v33_min_servo": 3.02
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.87,
+   "v33_min_mod": 3.25,
+   "v5_min_servo": 4.65,
+   "v33_min_servo": 3.03
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.9,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.75,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.86,
+   "v33_min_mod": 3.25,
+   "v5_min_servo": 4.34,
+   "v33_min_servo": 2.72
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.87,
+   "v33_min_mod": 3.25,
+   "v5_min_servo": 4.36,
+   "v33_min_servo": 2.74
+  },
+  {
+   "source": "bloc 5,0 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.86,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.34,
+   "v33_min_servo": 3.14
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.84,
+   "v33_min_mod": 3.22,
+   "v5_min_servo": 4.61,
+   "v33_min_servo": 2.99
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.84,
+   "v33_min_mod": 3.22,
+   "v5_min_servo": 4.62,
+   "v33_min_servo": 3.0
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.9,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.75,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.84,
+   "v33_min_mod": 3.22,
+   "v5_min_servo": 4.3,
+   "v33_min_servo": 2.68
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.84,
+   "v33_min_mod": 3.22,
+   "v5_min_servo": 4.32,
+   "v33_min_servo": 2.7
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.84,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.3,
+   "v33_min_servo": 3.1
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.97,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.76,
+   "v33_min_servo": 3.15
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.97,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.77,
+   "v33_min_servo": 3.15
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 5.0,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.85,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.97,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.51,
+   "v33_min_servo": 2.89
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.97,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.52,
+   "v33_min_servo": 2.9
+  },
+  {
+   "source": "bloc 5,1 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 5.0,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.7,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.95,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.74,
+   "v33_min_servo": 3.12
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.95,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.74,
+   "v33_min_servo": 3.13
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 5.0,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.86,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.95,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.47,
+   "v33_min_servo": 2.86
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.95,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.49,
+   "v33_min_servo": 2.87
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.95,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.47,
+   "v33_min_servo": 3.27
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 5.07,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.88,
+   "v33_min_servo": 3.26
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 5.08,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.89,
+   "v33_min_servo": 3.27
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 5.1,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.95,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 5.07,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.65,
+   "v33_min_servo": 3.04
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 5.08,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.66,
+   "v33_min_servo": 3.05
+  },
+  {
+   "source": "bloc 5,2 V / 0,15 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 5.1,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.81,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.58,
+   "v33_min_mod": 2.97,
+   "v5_min_servo": 4.11,
+   "v33_min_servo": 2.5
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.6,
+   "v33_min_mod": 2.98,
+   "v5_min_servo": 4.15,
+   "v33_min_servo": 2.54
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.58,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.11,
+   "v33_min_servo": 2.91
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.58,
+   "v33_min_mod": 2.97,
+   "v5_min_servo": 3.78,
+   "v33_min_servo": 2.17
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.6,
+   "v33_min_mod": 2.98,
+   "v5_min_servo": 3.79,
+   "v33_min_servo": 2.17
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.58,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 3.78,
+   "v33_min_servo": 2.58
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.79,
+   "v33_min_mod": 3.18,
+   "v5_min_servo": 4.44,
+   "v33_min_servo": 2.82
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.81,
+   "v33_min_mod": 3.19,
+   "v5_min_servo": 4.46,
+   "v33_min_servo": 2.84
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.79,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.44,
+   "v33_min_servo": 3.23
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.79,
+   "v33_min_mod": 3.18,
+   "v5_min_servo": 3.91,
+   "v33_min_servo": 2.29
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.81,
+   "v33_min_mod": 3.19,
+   "v5_min_servo": 3.92,
+   "v33_min_servo": 2.31
+  },
+  {
+   "source": "bloc 5,0 V / 0,30 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.79,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 3.91,
+   "v33_min_servo": 2.71
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.88,
+   "v33_min_mod": 3.27,
+   "v5_min_servo": 4.71,
+   "v33_min_servo": 3.09
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.89,
+   "v33_min_mod": 3.27,
+   "v5_min_servo": 4.71,
+   "v33_min_servo": 3.09
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.95,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.83,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.88,
+   "v33_min_mod": 3.27,
+   "v5_min_servo": 4.48,
+   "v33_min_servo": 2.87
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.89,
+   "v33_min_mod": 3.27,
+   "v5_min_servo": 4.49,
+   "v33_min_servo": 2.87
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "6 sur le rail",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 4.88,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.48,
+   "v33_min_servo": 3.28
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.99,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.83,
+   "v33_min_servo": 3.21
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.99,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.83,
+   "v33_min_servo": 3.22
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 0.65,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 5.02,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.91,
+   "v33_min_servo": 3.29
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "aucun",
+   "v5_min_mod": 4.99,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.63,
+   "v33_min_servo": 3.02
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "470u",
+   "v5_min_mod": 4.99,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.64,
+   "v33_min_servo": 3.02
+  },
+  {
+   "source": "buck 5,1 V / 0,10 ohm",
+   "modules": "en direct sur le bloc",
+   "servo_A": 1.3,
+   "c_vin5": "cavalier pose",
+   "v5_min_mod": 5.02,
+   "v33_min_mod": 3.29,
+   "v5_min_servo": 4.79,
+   "v33_min_servo": 3.29
   }
- }
+ ]
 }

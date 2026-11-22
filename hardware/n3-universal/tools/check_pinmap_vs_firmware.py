@@ -263,9 +263,32 @@ def main() -> int:
             got = set(pads_of(pcb, ref).values())
             if got != want:
                 errors.append(f"{ref}: nets {sorted(got)}, attendu {sorted(want)}")
-        jp7 = pads_of(pcb, "JP7")
-        if jp7.get("1"):
-            errors.append(f"JP7 (K3 chauffage) : broche 1 câblée sur '{jp7['1']}' — ON forcé interdit")
+        # Rev 0.3 — commande directe d'un module relais ACTIF A L'ETAT HAUT, par canal :
+        # GPIO (net Kn) -> Rs -> ligne CMDn -> bornier (3=S 2=+5V 1=GND) ; rappel 10k vers
+        # GND ; sélecteur relié DIRECTEMENT au +3V3 (ON) et à la masse (OFF). Plus aucun
+        # transistor : un net REL*_B/_SW ou un collecteur ouvert ici inverserait la logique.
+        # K3 (chauffage) et K6 (GPIO45 du S3, strapping VDD_SPI) n'ont pas de position ON.
+        no_on = {3: "K3 chauffage", 6: "K6 : GPIO45 du S3 (strapping)"}
+        for n, (rs, rp) in enumerate((("R1", "R5"), ("R2", "R6"), ("R3", "R7"), ("R4", "R8"),
+                                      ("R28", "R29"), ("R31", "R32")), 1):
+            line = f"CMD{n}"
+            if pads_of(pcb, rs) != {"1": f"K{n}", "2": line}:
+                errors.append(f"canal {n}: {rs} doit relier K{n} (pad 1) à {line} (pad 2), trouvé {pads_of(pcb, rs)}")
+            if pads_of(pcb, rp) != {"1": line, "2": "GND"}:
+                errors.append(f"canal {n}: {rp} doit rappeler {line} à GND, trouvé {pads_of(pcb, rp)}")
+            want_j = {"1": "GND", "2": "+5V", "3": line}
+            if pads_of(pcb, f"J{38 + n}") != want_j:
+                errors.append(f"canal {n}: J{38 + n} = {pads_of(pcb, f'J{38 + n}')}, attendu {want_j}")
+            jp = pads_of(pcb, f"JP{4 + n}")
+            if jp.get("2") != line or jp.get("3") != "GND":
+                errors.append(f"canal {n}: JP{4 + n} = {jp}, attendu 2={line} 3=GND")
+            if n in no_on:
+                if jp.get("1"):
+                    errors.append(f"JP{4 + n} ({no_on[n]}) : broche 1 câblée sur '{jp['1']}' — ON forcé interdit")
+            elif jp.get("1") != "+3V3":
+                errors.append(f"canal {n}: JP{4 + n} pad 1 = {jp.get('1')!r}, attendu '+3V3' (liaison directe)")
+        if "REL1_" in pcb or "MAINS_" in pcb:
+            errors.append("PCB : des nets REL*/MAINS* subsistent (étage à transistor ou secteur de la 0.2.3)")
         for ref, want in (("Q7", {"1": "GATE_G", "2": "LDO_IN", "3": "+5V"}),   # rev 0.2.1 : source amont (+5V), drain charge
                           ("Q8", {"1": "GATE_G", "2": "GATE_B", "3": "GND"}),
                           ("U1", {"1": "GND", "2": "+3V3_SW", "3": "LDO_IN"}),
@@ -279,10 +302,11 @@ def main() -> int:
                           ("JP3", {"1": "SD_CLK_S3", "2": "SD_CLK", "3": "K5"}),
                           ("JP4", {"1": "SD_MOSI_S3", "2": "SD_MOSI", "3": "K6"}),
                           ("JP11", {"1": "SD_MISO_S3", "2": "SD_MISO", "3": "SD_MISO_W"}),
-                          # forçage relais : base reliée au sélecteur, K3 sans ON
-                          ("JP5", {"1": "REL1_ON", "2": "REL1_B", "3": "GND"}),
-                          ("JP7", {"2": "REL3_B", "3": "GND"}),
-                          ("JP10", {"1": "REL6_ON", "2": "REL6_B", "3": "GND"})):
+                          # rev 0.3 (décision D7) : D5 posée (K = VIN_5V, A = +5V), cavalier
+                          # JP22 en parallèle, réservoir C14 côté DevKit
+                          ("D5", {"1": "VIN_5V", "2": "+5V"}),
+                          ("JP22", {"1": "+5V", "2": "VIN_5V"}),
+                          ("C14", {"1": "VIN_5V", "2": "GND"})):
             got = pads_of(pcb, ref)
             for pad, wnet in want.items():
                 if got.get(pad) != wnet:
@@ -295,7 +319,8 @@ def main() -> int:
         return 1
     print(f"OK — cartographies universelles cohérentes : msp ({len(MSP_FN)} fn), "
           f"n3pp ({len(N3PP_FN)} fn), ffp5cs WROOM+S3 ({len(FFP_FN)} fn x 2 sites), "
-          "sites A1/A2, broches S3 interdites, topologies US/gate/diviseur/SD.")
+          "sites A1/A2, broches S3 interdites, topologies US/gate/diviseur/SD, "
+          "6 commandes de modules relais (liaison directe, K3/K6 sans ON), D5/JP22/C14.")
     return 0
 
 

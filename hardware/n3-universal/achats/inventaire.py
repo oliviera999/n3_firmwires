@@ -1,4 +1,8 @@
-"""Inventaire des composants à poser / acheter par profil, n3-universal rev 0.2.3.
+"""Inventaire des composants à poser / acheter par profil, n3-universal rev 0.3.0.
+
+Rev 0.3 : plus de relais ni d'alimentation 230 V sur la carte. Les relais sont des MODULES du
+commerce actifs à l'état haut, câblés sur les borniers J39..J44 ; le profil ffp5cs 230 V
+s'alimente par un bloc 5 V externe, comme n3pp.
 
 Source : BOM.csv (carte), consignes de pose README / COMPOSANTS_FFP5CS.csv / ALIMENTATION.md,
 firmwares msp / n3pp / ffp5cs (PINMAP_UNIVERSAL). Produit, pour chaque profil, la liste des
@@ -17,7 +21,7 @@ NEVER = {"A2", "J35", "JP2", "JP3", "JP4", "JP11"}
 PROFILES = OrderedDict([
     ("msp1", "msp1 — station météo + tracker (18650 + solaire)"),
     ("n3pp", "n3pp — serre (chargeur 5 V)"),
-    ("ffp_230", "ffp5cs — aquaponie secteur 230 V (Hi-Link)"),
+    ("ffp_230", "ffp5cs — aquaponie 230 V (bloc 5 V externe, modules relais)"),
     ("ffp_12v", "ffp5cs — aquaponie 12 V (AGM + PWM solaire)"),
 ])
 SHEET = {"msp1": "msp1", "n3pp": "n3pp", "ffp_230": "ffp5cs 230V", "ffp_12v": "ffp5cs 12V"}
@@ -29,19 +33,18 @@ def rng(prefix, *nums):
 
 # ---------------------------------------------------------------- refs posées par profil
 CORE = (
-    {"A1", "Q12", "R57", "D12", "C1", "D5", "Q7", "Q8", "R34", "R35", "R48", "U1", "C11", "C12",
+    {"A1", "Q12", "R57", "D12", "C1", "D5", "JP22", "C14", "Q7", "Q8", "R34", "R35", "R48", "U1", "C11", "C12",
      "C3", "C4", "R25", "R26", "J13", "J17", "J18", "J19", "J20", "JP1", "J1", "R23", "J10",
      "J12", "R54", "C10"}
-    | rng("TP", 1, 2, 3, 4) | rng("H", 1, 2, 3, 4, 5, 6, 7) | rng("JP", *range(13, 22))
+    | rng("TP", 1, 2, 3, 4) | rng("H", 1, 2, 3, 4, 6, 7) | rng("JP", *range(13, 22))
 )
 VBAT = {"J25", "R38", "R39", "R58", "JP12", "R49", "C13", "D11"}
 SERVO = {"J15", "J16", "R20", "R21", "C2"}
 ADC4 = rng("J", 31, 32, 33, 34) | rng("R", 50, 51, 52, 53) | rng("C", 6, 7, 8, 9)
-RELAY1 = {"K1", "Q1", "D1", "R1", "R5", "LED1", "R9", "J3", "JP5", "R61"}
-RELAY6 = (rng("K", *range(1, 7)) | rng("Q", *range(1, 7)) | rng("D", 1, 2, 3, 4, 6, 7)
-          | rng("R", 1, 2, 3, 4, 28, 31) | rng("R", 5, 6, 7, 8, 29, 32) | rng("LED", 1, 2, 3, 4, 6, 7)
-          | rng("R", 9, 10, 11, 12, 30, 33) | rng("J", 3, 4, 5, 6, 23, 24) | rng("JP", *range(5, 11))
-          | rng("R", 61, 62, 64, 65, 66) | {"J38"})
+# Canaux de commande de modules relais (rev 0.3) : Rs 470, rappel 10k, bornier S/+5V/GND, sélecteur
+RELAY1 = {"R1", "R5", "J39", "JP5"}
+RELAY6 = (rng("R", 1, 2, 3, 4, 28, 31) | rng("R", 5, 6, 7, 8, 29, 32)
+          | rng("J", *range(39, 45)) | rng("JP", *range(5, 11)))
 FFP = (RELAY6 | SERVO | rng("J", 7, 8, 9) | rng("R", 14, 15, 16, 17, 18, 19) | {"J11", "R24", "R27", "J14",
        "LED5", "R13"})
 
@@ -49,7 +52,7 @@ POP = {
     "msp1": CORE | VBAT | SERVO | ADC4 | rng("R", 43, 44, 45, 46)
             | {"J11", "R24", "J29", "J30", "R47", "J21"},
     "n3pp": CORE | VBAT | ADC4 | RELAY1 | {"R27", "J2", "J21"},
-    "ffp_230": CORE | FFP | {"J27", "F1", "RV1", "PS1"},
+    "ffp_230": CORE | FFP | {"J2"},
     "ffp_12v": CORE | FFP | VBAT | {"J26", "Q11", "D9", "R40", "D8", "C5", "J36", "J37", "J21", "J22", "J28"},
 }
 
@@ -72,24 +75,16 @@ def article_of(ref):
         return "R_" + v, 1
     if p == "C":
         return {"100n": "C_100n", "1000u/16V": "C_1000u16", "470u/16V": "C_470u16", "470u/25V": "C_470u25",
-                "100u/16V": "C_100u16", "10u/25V": "C_10u25"}[v], 1
+                "220u/16V": "C_220u16", "100u/16V": "C_100u16", "10u/25V": "C_10u25"}[v], 1
     if p == "D":
-        return {"1N4007": "1N4007", "BAT85": "BAT85", "1.5KE6.8A": "TVS_6V8", "1.5KE18A": "TVS_18",
-                "1N4744A": "Z15", "FIL": "FIL"}[v], 1
+        return {"1N5822": "D_1N5822", "BAT85": "BAT85", "1.5KE6.8A": "TVS_6V8", "1.5KE18A": "TVS_18",
+                "1N4744A": "Z15"}[v], 1
     if p == "LED":
         return ("LED_R" if v == "rouge" else "LED_V"), 1
     if p == "Q":
         return ("BC337" if v.startswith("BC337") else "IRF4905"), 1
     if p == "U":
         return "LD1117", 1
-    if p == "K":
-        return "SRD05", 1
-    if p == "RV":
-        return "VARISTANCE", 1
-    if p == "F":
-        return "PORTEFUS_5x20", 1
-    if p == "PS":
-        return "HLK20M05", 1
     if p == "TP":
         return "TP_FIL", 1
     if p == "H":
@@ -141,8 +136,8 @@ OFF = {
          "Coupés pendant le sommeil (JP1 ôté). Gros servo plus tard : fil +5V en étoile, voir ALIMENTATION.md."),
         ("OLED", 1, A, "Affichage local sur J13", "Alimenté par le rail commuté : éteint en sommeil, 0 fuite."),
         ("TP4056", 1, P, "Chargeur 1S entre panneau et 18650", "Décision N5 : conservé (déjà en stock). Modèle AVEC protection (DW01)."),
-        ("BOOST", 1, A, "Élève 3,0–4,2 V de la 18650 à 5,1 V vers J1",
-         "RÉGLER À 5,1 V au multimètre AVANT de brancher la carte. MT3608 : ~1,5 mA à vide, acceptable."),
+        ("BOOST", 1, A, "Élève 3,0–4,2 V de la 18650 à 5,2 V vers J1",
+         "RÉGLER À 5,2 V au multimètre AVANT de brancher la carte (rev 0.3 : la diode D5 prend 0,35 V). MT3608 : ~1,5 mA à vide, acceptable."),
         ("CELL_18650", 1, A, "Stockage d'énergie (~2,3 Wh/jour consommés)",
          "Cellule de marque (Samsung/LG/Panasonic/Molicel), pas de « 9900 mAh ». 2e cellule en parallèle = option."),
         ("SUPPORT_18650", 1, A, "Logement de la cellule", "À l'ombre, sous le panneau : jamais au soleil (> 45 °C)."),
@@ -157,11 +152,13 @@ OFF = {
          "JP16-JP19 OUVERTS, R43-R46 NON posés. Capacitif v1.2 : ne rouille pas comme les sondes résistives."),
         ("LDR", 1, A, "Luminosité de la serre sur J12", "R27 posé, JP20 FERMÉ."),
         ("OLED", 1, A, "Affichage local sur J13", ""),
-        ("CHARGEUR_5V", 1, A, "Alimentation de la carte", "5 V 2 A minimum, de marque (≥ 4,8 V sur J1/J2 sous charge)."),
+        ("CHARGEUR_5V", 1, A, "Alimentation de la carte", "5 V 2 A minimum, de marque (≥ 4,8 V sur J1/J2 sous charge). Cavalier JP22 POSÉ sur cette unité : jamais d'USB du DevKit en même temps."),
+        ("MODULE_RELAIS", 1, A, "Relais de la pompe d'arrosage, câblé sur J39 (S / +5V / GND)",
+         "ACTIF A L'ÉTAT HAUT uniquement (type KY-019). Essai sur table avant achat : collage franc en 3,3 V à travers 1 kΩ."),
         ("CABLE_USB_JACK", 1, A, "Du chargeur au jack J2", "Le plus COURT et le plus épais possible (≥ 0,5 mm²)."),
         ("1N4007_EXT", 1, A, "Roue libre aux bornes de la pompe si pompe DC",
          "Cathode côté +. Inutile pour une pompe 230 V."),
-        ("BOITIER", 1, A, "Boîtier étanche (serre humide)", ""),
+        ("BOITIER", 1, A, "Boîtier étanche (serre humide)", "Isolant si la pompe est en 230 V : le 230 V ne passe que par le module relais."),
         ("PRESSE_ETOUPE", 6, A, "Passage des câbles sondes / pompe / alim", ""),
     ],
     "ffp_230": [
@@ -177,11 +174,16 @@ OFF = {
         ("CR2032", 1, A, "Pile du DS3231", ""),
         ("MICROSD", 1, O, "Journal sur carte SD (J35)",
          "Seulement avec un ESP32-S3 (site A2) ou après efuse VDD_SDIO=3V3 sur WROOM. PAS de module Catalex."),
-        ("FUS_T1A", 3, A, "Cartouche du porte-fusible F1 (1 posée + 2 de rechange)", "Temporisé (T), pas rapide (F)."),
-        ("CORDON_SECTEUR", 1, A, "Arrivée 230 V sur J27", "Raccordement sous supervision adulte, boîtier fermé."),
-        ("BOITIER", 1, A, "Boîtier isolant (classe II) OBLIGATOIRE", "Plastique, pas de boîtier métallique (pas de terre sur la carte)."),
+        ("MODULE_RELAIS", 4, A, "Relais pompe aquarium (J39), pompe réservoir (J40), chauffage (J41), lumière (J42)",
+         "ACTIFS A L'ÉTAT HAUT uniquement (type KY-019, ou module 8 canaux H/L cavalier sur H). Regarder le dessous d'un module avant d'en acheter plusieurs : pas d'écart visible entre pistes 230 V et basse tension = pas d'achat."),
+        ("MODULE_RELAIS", 2, O, "Relais auxiliaires AUX1 (J43) et AUX2 (J44)", "Seulement si une charge y est raccordée."),
+        ("BLOC_5V", 1, A, "Alimentation de la carte et des modules relais, sur J2 (jack) ou J1 (bornier)",
+         "5 V ≥ 2 A, mieux 3 A. Mesurer ≥ 5,1 V en charge, ou modèle réglable mis à 5,2 V. PAS un bloc 12 V (même fiche) : il détruirait la carte."),
+        ("PROTECTION_AMONT", 1, A, "Fusible ou disjoncteur en amont des charges 230 V",
+         "OBLIGATOIRE : la carte ne protège pas les charges. Raccordement sous supervision adulte, coffret fermé."),
+        ("BOITIER", 1, A, "Coffret isolant OBLIGATOIRE pour les modules relais et leurs charges 230 V", "Plastique, pas de boîtier métallique. Modules au-dessus de la carte (les fils de commande sortent par le bord haut)."),
         ("PRESSE_ETOUPE", 8, A, "Passage cordon secteur, charges 230 V, sondes", ""),
-        ("FIL_15", 5, A, "Câblage des charges 230 V (pompes, chauffage, lumière)", "Au mètre, 1,5 mm² souple + embouts."),
+        ("FIL_15", 5, A, "Câblage des charges 230 V (pompes, chauffage, lumière), côté modules relais", "Au mètre, 1,5 mm² souple + embouts. Jamais sur la carte."),
     ],
     "ffp_12v": [
         ("DHT11", 1, A, "Température/humidité de l'air sur J10", "DHT22 possible (flag -DUSE_DHT22)."),
@@ -196,8 +198,11 @@ OFF = {
         ("INA226", 1, A, "Mesure tension/courant batterie (délestage AGM, n3_power) sur J21",
          "Le shunt R100 du module plafonne à 0,8 A : shunt externe 5–10 mΩ câblé en Kelvin pour mesurer les pompes."),
         ("INA226", 2, O, "2e et 3e INA226 : panneau (0x40) et charges (0x44) sur J22/J28", "Adresses à régler par ponts A0/A1."),
-        ("BUCK", 1, A, "12 V → 5,1 V pour la carte (J36 → J37)",
-         "RÉGLER À 5,1 V AVANT de raccorder J37. Sur entretoises au-dessus de la carte."),
+        ("MODULE_RELAIS", 3, A, "Relais pompe aquarium (J39), pompe réservoir (J40), lumière (J42)",
+         "ACTIFS A L'ÉTAT HAUT uniquement (type KY-019). Bobines alimentées en 5 V par le bornier de chaque canal."),
+        ("MODULE_RELAIS", 3, O, "Relais chauffage (J41, interdit sur batterie par le firmware), AUX1 (J43), AUX2 (J44)", "Seulement si une charge y est raccordée."),
+        ("BUCK", 1, A, "12 V → 5,2 V pour la carte (J36 → J37)",
+         "RÉGLER À 5,2 V AVANT de raccorder J37 (rev 0.3 : la diode D5 prend 0,35 V). Sur entretoises au-dessus de la carte."),
         ("FUSIBLE_LAME", 1, A, "Fusible 7,5–10 A en ligne, au plus près de la batterie, avant J26", "OBLIGATOIRE."),
         ("1N4007_EXT", 2, A, "Roue libre aux bornes des pompes 12 V (aquarium, réservoir)",
          "Cathode côté +. Pompe > 1 A : préférer une 1N5408 (3 A)."),
@@ -216,37 +221,42 @@ for k in OFF:  # câblage commun à chaque unité
 POSE_NOTE = {
     "msp1": {
         "R_2k": None,
-        "JP": "Cavaliers posés : JP1 parqué (rail commuté), JP12 en 2-3 (1S), JP16-JP19 et JP21 FERMÉS.",
+        "JP": "Cavaliers posés : JP1 parqué (rail commuté), JP12 en 2-3 (1S), JP16-JP19 et JP21 FERMÉS. JP22 ÔTÉ (boost à 5,2 V).",
         "LED5": "LED5/R13 NON posées (3 mA permanents).",
-        "J1": "Entrée du boost 5,1 V.",
+        "J1": "Entrée du boost 5,2 V.",
         "J25": "Pont batterie 1S : J25 sur le + de la 18650, JP12 en 2-3. Veille d'urgence firmware ≥ 3,3 V.",
     },
     "n3pp": {
-        "JP": "Cavaliers posés : JP1 parqué (rail commuté), JP12 en 2-3, JP20 FERMÉ ; JP5 SANS cavalier (AUTO).",
+        "JP": "Cavaliers posés : JP1 parqué (rail commuté), JP12 en 2-3, JP20 FERMÉ, JP22 POSÉ (chargeur 5,0 V : jamais d'USB en même temps) ; JP5 SANS cavalier (AUTO).",
         "J25": "Pas de batterie : relier J25-1 au +5V (J18-1) par un fil, sinon le firmware lit une batterie vide et part en veille d'urgence (ou désactiver la clé serveur 112). À vérifier au 1er allumage.",
         "J1": "J2 (jack) pour le chargeur ; J1 en secours.",
     },
     "ffp_230": {
-        "JP": "Cavaliers posés : JP1 FERMÉ 1-2, JP13-JP15 et JP20 FERMÉS ; JP5-JP10 SANS cavalier (AUTO).",
-        "J1": "J1 seulement pour les essais sur table SANS secteur (jamais les deux en même temps).",
-        "H": "H1 et H5 : vis NYLON OBLIGATOIRES (230 V à < 5 mm).",
+        "JP": "Cavaliers posés : JP1 FERMÉ 1-2, JP13-JP15 et JP20 FERMÉS ; JP5-JP10 SANS cavalier (AUTO) ; JP22 ÔTÉ si le bloc donne 5,2 V, POSÉ s'il ne dépasse pas 5,0 V.",
+        "J1": "Bloc 5 V sur J2 (jack) OU sur J1 (bornier) : jamais deux sources.",
     },
     "ffp_12v": {
-        "JP": "Cavaliers posés : JP1 FERMÉ, JP12 en 1-2 (18k), JP13-JP15 et JP20 FERMÉS ; JP5-JP10 SANS cavalier.",
+        "JP": "Cavaliers posés : JP1 FERMÉ, JP12 en 1-2 (18k), JP13-JP15 et JP20 FERMÉS ; JP5-JP10 SANS cavalier ; JP22 ÔTÉ (buck à 5,2 V).",
         "J1": "J1 seulement pour les essais sur table, buck débranché.",
         "J25": "Sonde bus 12 V (JP12 en 1-2, ratio 118/18) : facultatif, aucun firmware ne la lit aujourd'hui.",
     },
 }
 # Position des cavaliers par profil (source structurée : classeur, vues Fritzing, gardes).
 # "1-2" / "2-3" = cavalier posé entre ces broches ; absent = sans cavalier (JP5-JP10 : AUTO ;
-# JP13-JP21 : OUVERT). JP1 en "2-3" = cavalier parqué (broche 3 non câblée) = rail commuté.
+# JP13-JP21 : OUVERT ; JP22 : ÔTÉ = D5 en service). JP1 en "2-3" = cavalier parqué (broche 3 non
+# câblée) = rail commuté. JP22 n'est posé que sur n3pp (chargeur 5,0 V, règle du 2026-11-19).
 JUMPER_STATE = {
     "msp1": {"JP1": "2-3", "JP12": "2-3", "JP16": "1-2", "JP17": "1-2", "JP18": "1-2", "JP19": "1-2", "JP21": "1-2"},
-    "n3pp": {"JP1": "2-3", "JP12": "2-3", "JP20": "1-2"},
+    "n3pp": {"JP1": "2-3", "JP12": "2-3", "JP20": "1-2", "JP22": "1-2"},
     "ffp_230": {"JP1": "1-2", "JP13": "1-2", "JP14": "1-2", "JP15": "1-2", "JP20": "1-2"},
     "ffp_12v": {"JP1": "1-2", "JP12": "1-2", "JP13": "1-2", "JP14": "1-2", "JP15": "1-2", "JP20": "1-2"},
 }
 JUMPERS = {p: len(v) for p, v in JUMPER_STATE.items()}  # cavaliers posés par profil
+
+# Valeur posée différente de la BOM selon le profil. C2 (réservoir des servos, derrière Q7) :
+# 100 µF sur msp, où Q7 se ferme sur C2 vide à chaque réveil (simulation/SIMULATION.md §13 :
+# 3V3 du DevKit à 3,30 V avec 100 µF, 2,9 V avec 470 µF) ; 470 µF sur ffp5cs (rail permanent).
+VALUE_BY_PROFILE = {("msp1", "C2"): "C_100u16"}
 
 
 def board_items(prof):
@@ -256,6 +266,7 @@ def board_items(prof):
     socket_pieces = 0
     for ref in sorted(POP[prof], key=natkey):
         aid, n = article_of(ref)
+        aid = VALUE_BY_PROFILE.get((prof, ref), aid)
         if aid in ("BARRETTE_F", "BARRETTE_M"):
             k = 1
             if ref == "A1":
@@ -281,8 +292,8 @@ def board_items(prof):
     agg["BARRETTE_M"]["pins"] = pins["BARRETTE_M"]
     # F1 : porte-fusible ; cavaliers
     agg["CAVALIER"] = dict(qty=JUMPERS[prof] + 2, refs=["JP…"], roles=["Cavaliers de configuration du profil (+2 de rechange)"])
-    agg["ENTRETOISE_M3"] = dict(qty=7, refs=["H1-H7"], roles=["Entretoises de fixation de la carte"])
-    agg["PCB"] = dict(qty=1, refs=["—"], roles=["Circuit imprimé n3-universal rev 0.2.3"])
+    agg["ENTRETOISE_M3"] = dict(qty=6, refs=["H1-H4, H6, H7"], roles=["Entretoises de fixation de la carte"])
+    agg["PCB"] = dict(qty=1, refs=["—"], roles=["Circuit imprimé n3-universal rev 0.3.0"])
     return agg
 
 

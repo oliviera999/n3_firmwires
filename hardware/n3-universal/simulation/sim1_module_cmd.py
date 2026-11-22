@@ -1,4 +1,4 @@
-"""Sim 7 — rev 0.3 : commande directe d'un module relais ACTIF A L'ETAT HAUT (type KY-019)
+"""Sim 1 — rev 0.3 : commande directe d'un module relais ACTIF A L'ETAT HAUT (type KY-019)
 par un GPIO 3,3 V a travers Rs, rappel 10k vers la masse, forcage JP direct (+3V3 / GND).
 
 Hypotheses sur le module (NON mesurees, a controler sur un exemplaire) :
@@ -7,6 +7,11 @@ Hypotheses sur le module (NON mesurees, a controler sur un exemplaire) :
   hFE prudent 85 (classe la plus faible de la fiche S8050 a 100 mA) ; 300 = piece la plus sensible.
 Le NPN est simule avec le modele BC337 de models.lib dont on regle Bf (etalonne : hFE a 70 mA = 0,875 x Bf).
 Coin defavorable : hFE 65 (85 a 25 degC, -23 % a froid : le modele n'a pas de derive de gain en temperature).
+
+Remplace sim1_relay.py (etage BC337 + relais SRD-05 sur la carte, rev 0.2.x), retire avec l'etage.
+Les figures out/s1_relay_*.png de la rev 0.2 restent dans le depot comme archives (SIMULATION.md §1).
+Usage (depuis hardware/n3-universal/simulation) : python3 sim1_module_cmd.py
+Ecrit out/s1_results.json et out/s1_nominal.cir.
 """
 import json, itertools, numpy as np
 from spicelib import run, meas, OUT
@@ -47,7 +52,7 @@ quit
 .end
 """
 KEYS = ("v(line)", "v(gpio)", "v(sw)", "ib", "icoil", "vcoil", "igpio", "i33")
-def op(name="s7", tran="", **p):
+def op(name="s1_sweep", tran="", **p):
     out, _ = run(NET.replace("@@TRAN@@", tran), name, {k: str(v) for k, v in p.items()})
     r = {k: meas(out, k) for k in KEYS}
     r["_out"] = out
@@ -127,7 +132,7 @@ res["seuil_ligne_60C"] = thr
 TR = "tran 1u 6m\nmeas tran icoil_pk MAX i(Lc)\nmeas tran vsw_min MIN v(sw)"
 gl = {}
 for rs, L in itertools.product((470, 1000), (0.05, 0.1)):
-    out, _ = run(NET.replace("@@TRAN@@", TR), "s7_glitch", dict(RS=str(rs), VG="0", TPULSE="60u", BF_BC337=str(BF(400)), LCOIL=str(L)))
+    out, _ = run(NET.replace("@@TRAN@@", TR), "s1_glitch", dict(RS=str(rs), VG="0", TPULSE="60u", BF_BC337=str(BF(400)), LCOIL=str(L)))
     gl[f"rs{rs}_L{int(L*1e3)}mH"] = dict(icoil_pk_mA=round(meas(out, "icoil_pk") * 1e3, 2))
 res["glitch_60us"] = gl
 
@@ -139,7 +144,11 @@ for rs in (470, 1000):
     g45[rs] = dict(auto_vgpio=round(auto["v(gpio)"], 4), on_force_vgpio=round(onf["v(gpio)"], 3))
 res["gpio45_reset"] = g45
 
-(OUT / "s7_results.json").write_text(json.dumps(res, indent=1, ensure_ascii=False))
+# netlist nominale gardee dans le depot (Rs 470, module Rbm 1 k, hFE 160, 5,0 V / 3,3 V)
+nom = op(name="s1_nominal", BF_BC337=BF(160))
+res["nominal"] = clean(nom)
+
+(OUT / "s1_results.json").write_text(json.dumps(res, indent=1, ensure_ascii=False))
 for k, v in res.items():
     if k != "grille": print(k, json.dumps(v, ensure_ascii=False))
 print("\nGRILLE (coin defavorable, sans R base-emetteur) : Rs / Rbm -> Ib mA, Vce, Vbobine, colle")

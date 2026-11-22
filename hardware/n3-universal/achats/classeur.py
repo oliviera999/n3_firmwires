@@ -11,7 +11,7 @@ import inventaire as I
 import catalogue as K
 from prix import PRIX
 
-from prix import DATE
+from prix import DATE, DATE_REV03
 
 F = "Arial"
 f_base = Font(name=F, size=10)
@@ -40,11 +40,12 @@ A, O, P = I.A, I.O, I.P
 # ------------------------------------------------------------------ remarques d'usage carte
 USE = {
     "ESP32_DEVKIT": "Enfiché sur ses supports, jamais soudé. 38 broches : support droit sur la rangée 25,4 mm ou 22,86 mm selon l'écart des rangées du module.",
-    "FIL": "D5 = pont de fil (rev 0.2.2). Règle absolue : ne JAMAIS brancher l'USB du DevKit quand la carte est alimentée.",
+    "D_1N5822": "D5, posée sur toutes les cartes : bague (cathode) côté repère K. Cavalier JP22 en parallèle : ÔTÉ = carte, ou carte + USB ; POSÉ = USB seul, jamais avec l'alimentation.",
+    "C_220u16": "C14, réservoir du DevKit derrière D5 : respecter la polarité (+ sérigraphié).",
+    "R_470": "Série des commandes de modules relais (R1-R4, R28, R31).",
     "LD1117": "Ce n'est pas un 78xx : 1=GND 2=OUT 3=IN (sérigraphié).",
     "IRF4905": "Respecter la sérigraphie G-D-S de chaque MOSFET.",
     "BC337": "Brochage C-B-E sérigraphié.",
-    "HLK20M05": "Zone 230 V : montage et raccordement sous supervision adulte.",
     "TVS_6V8": "Protège le rail 5 V. Commander tôt chez LCSC (stock faible).",
     "VIS_M3": "",
 }
@@ -92,32 +93,32 @@ def profile_rows(prof):
 
 CONSIGNES = {
     "msp1": [
-        "Chaîne d'alimentation : panneau 6 V → TP4056 → 18650 → boost réglé à 5,1 V → J1 (bornier).",
+        "Chaîne d'alimentation : panneau 6 V → TP4056 → 18650 → boost réglé à 5,2 V → J1 (bornier). Cavalier JP22 ÔTÉ.",
         "JP1 ôté (parqué en 2-3) : capteurs, OLED et servos coupés pendant le sommeil.",
         "JP12 en 2-3 (pont 1S 100k/100k) ; JP16-JP19 FERMÉS (LDR tracker) ; JP21 FERMÉ (DHT extérieur) ; JP13-JP15 et JP20 OUVERTS.",
-        "NE PAS poser : LED5/R13, R17-R19, R27, tout l'étage relais (K1-K6…), Hi-Link, section 12 V.",
+        "NE PAS poser : LED5/R13, R17-R19, R27, les six canaux de commande de relais (R1-R8, R28-R32, J39-J44, JP5-JP10), section 12 V. C2 = 100 µF sur cette unité.",
         "Firmware : seuil de veille d'urgence à régler pour ≥ 3,3 V cellule. Cellule à l'ombre.",
     ],
     "n3pp": [
-        "Chargeur 5 V 2 A → cordon court et épais → J2 (jack). Jamais par le micro-USB du DevKit.",
+        "Chargeur 5 V 2 A → cordon court et épais → J2 (jack). Cavalier JP22 POSÉ sur cette unité (chargeur 5,0 V) : JAMAIS l'USB du DevKit en même temps que le chargeur.",
         "JP1 ôté (parqué en 2-3) ; JP12 en 2-3 ; JP20 FERMÉ (LDR) ; JP16-JP19 OUVERTS (sondes de sol) ; JP5 sans cavalier (AUTO).",
-        "Un seul relais : K1 = pompe d'arrosage (et ses pièces Q1, D1, R1, R5, LED1, R9, J3, JP5, R61).",
-        "NE PAS poser : LED5/R13, R43-R46, R17-R19, K2-K6, servos, Hi-Link, section 12 V.",
+        "Un seul module relais, ACTIF A L'ÉTAT HAUT (KY-019) : pompe d'arrosage, sur J39 (S / 5V / GND), avec R1 470 Ω, R5 10 kΩ et JP5. Le 230 V ne passe que par le module.",
+        "NE PAS poser : LED5/R13, R43-R46, R17-R19, les canaux K2 à K6 (R2-R4, R6-R8, R28-R32, J40-J44, JP6-JP10), servos et C2, section 12 V.",
         "J25 : relier J25-1 au +5V (J18-1) par un fil, sinon la mesure « batterie » lit 0 et le firmware se met en veille d'urgence (ou clé serveur 112 = 0). À vérifier au premier allumage.",
     ],
     "ffp_230": [
-        "230 V → J27 (1 = N, 2 = L) → F1 T1A + RV1 → Hi-Link PS1 → +5V. Boîtier isolant fermé, différentiel 30 mA, supervision adulte.",
-        "H1 et H5 : vis NYLON obligatoires. JP1 FERMÉ 1-2 (rail permanent) ; JP13-JP15 FERMÉS (ponts écho) ; JP20 FERMÉ ; JP5-JP10 sans cavalier (AUTO).",
-        "J1 seulement pour les essais sur table SANS secteur : jamais J1 et le Hi-Link en même temps.",
-        "Flash USB : carte HORS secteur et JP1 ôté (le pull-up 1-Wire sur GPIO2 bloque le bootloader). Sinon OTA.",
+        "Bloc 5 V ≥ 2 A (mieux 3 A) → J2 (jack) ou J1 (bornier). Plus AUCUN 230 V sur la carte : il ne passe que par les modules relais, dans un coffret isolant fermé, protégé en amont (fusible ou disjoncteur, différentiel 30 mA), sous supervision adulte.",
+        "Modules relais ACTIFS A L'ÉTAT HAUT sur J39-J44 (S / 5V / GND, 3 fils par module). JP1 FERMÉ 1-2 (rail permanent) ; JP13-JP15 FERMÉS (ponts écho) ; JP20 FERMÉ ; JP5-JP10 sans cavalier (AUTO).",
+        "Cavalier JP22 : ÔTÉ si le bloc donne 5,2 V au connecteur ; POSÉ s'il ne dépasse pas 5,0 V (alors jamais d'USB en même temps). Ne jamais brancher un bloc 12 V sur J2.",
+        "Flash USB : JP1 ôté (le pull-up 1-Wire sur GPIO2 bloque le bootloader). Carte alimentée permise si JP22 est ÔTÉ. Sinon OTA.",
         "NE PAS poser : J29-J34, R43-R47, section 12 V (J26, Q11, D8, D9, R40, C5, J36, J37).",
     ],
     "ffp_12v": [
-        "Batterie AGM (bornes batterie, pas la sortie « charge » du PWM) → fusible lame 7,5-10 A → J26 → Q11/D8/D9 → J36 → buck réglé 5,1 V → J37.",
+        "Batterie AGM (bornes batterie, pas la sortie « charge » du PWM) → fusible lame 7,5-10 A → J26 → Q11/D8/D9 → J36 → buck réglé 5,2 V → J37. Cavalier JP22 ÔTÉ.",
         "JP1 FERMÉ ; JP12 en 1-2 (18k) ; JP13-JP15 FERMÉS ; JP20 FERMÉ ; JP5-JP10 sans cavalier (AUTO).",
-        "Les pompes 12 V passent par les CONTACTS des relais, directement sur le bus ; diode de roue libre aux bornes de chaque pompe.",
+        "Les pompes 12 V passent par les CONTACTS des modules relais (J39-J44 pour la commande), directement sur le bus ; diode de roue libre aux bornes de chaque pompe.",
         "Relais collés = poste dominant (≈ 10 Wh/jour par pompe maintenue) : cycles de pompe et chauffage interdit sur batterie (firmware).",
-        "NE PAS poser : Hi-Link PS1, F1, RV1, J27, J29-J34, R43-R47.",
+        "NE PAS poser : J29-J34, R43-R47.",
     ],
 }
 
@@ -202,7 +203,7 @@ def build(OUT):
         proj_rows[prof] = rows
         ws["A1"] = title
         ws["A1"].font = f_title
-        ws["A2"] = (f"Carte n3-universal rev 0.2.3 — composants à poser et à acheter pour UNE unité. Prix du {DATE} "
+        ws["A2"] = (f"Carte n3-universal rev 0.3.0 — composants à poser et à acheter pour UNE unité. Prix du {DATE} "
                     "(feuille Prix). Les quantités (bleu) sont modifiables ; l'achat groupé arrondi aux lots est dans « Global ».")
         ws["A2"].font = f_sub
         r = 4
@@ -400,7 +401,7 @@ def build(OUT):
     wl = wb.create_sheet("Lisez-moi", 0)
     L = [
         ("Achats n3-universal — 4 projets", f_title),
-        (f"Carte universelle rev 0.2.3 (hardware/n3-universal). Prix relevés le {DATE} chez les boutiques marocaines en ligne.", f_sub),
+        (f"Carte universelle rev 0.3.0 (hardware/n3-universal). Prix relevés le {DATE} chez les boutiques marocaines en ligne ; modules relais relevés le {DATE_REV03}.", f_sub),
         ("", None),
         ("Feuilles", f_bold),
         ("Global — tout ce qu'il faut acheter pour les 4 unités, rechange comprise, arrondi aux lots vendus, avec le coût total.", f_base),
@@ -417,14 +418,15 @@ def build(OUT):
         ("", None),
         ("Points à retenir avant d'acheter", f_bold),
         ("1. Trois pièces ne se trouvent pas au Maroc : les deux TVS (1.5KE6.8A, 1.5KE18A) → LCSC ; prévoir aussi le PCB (JLCPCB). Les ajouter au même colis.", f_warn),
-        ("2. Boîtiers : la carte mesure 278 × 135 mm → coffret d'au moins 300 × 200 mm.", f_base),
+        ("2. Boîtiers : la carte mesure 278 × 91 mm → coffret d'au moins 300 mm de long ; sur ffp5cs, prévoir la place des modules relais au-dessus de la carte.", f_base),
         ("3. Borniers KF301 vendus « pas 5,0 mm » : ils entrent dans les trous 5,08 en 2 et 3 pôles ; en 4 pôles, présenter avant de souder.", f_base),
         ("4. Modules I2C (OLED, DS3231, BME280, INA226) : vérifier l'ordre des broches avant d'enficher (supports = GND-VCC-SCL-SDA), sinon fils Dupont.", f_warn),
         ("5. Lecteur microSD « pour Arduino » : type Catalex (régulateur + tampon) = ne convient pas. Chercher un module 3,3 V direct.", f_base),
-        ("6. Fusible T1A : demander explicitement un temporisé (T). Porte-fusible : mesurer l'entraxe des pattes (22,0–22,6 mm).", f_base),
+        ("6. Modules relais : ACTIFS A L'ÉTAT HAUT uniquement (KY-019). Essai sur table avant d'en acheter plusieurs (collage franc en 3,3 V à travers 1 kΩ) et regarder le dessous : pas d'écart visible entre 230 V et basse tension = pas d'achat.", f_warn),
         ("7. Pas de panneau 6 V 5 W au Maroc : 6 V 3,8 W retenu (marge ×3 en hiver selon ALIMENTATION.md).", f_base),
         ("8. Presse-étoupes, porte-fusible lame et fil unipolaire : pas en ligne, quincaillerie / électricien / accessoires auto.", f_base),
-        ("9. Règle absolue (D5 en pont de fil) : ne JAMAIS brancher l'USB du DevKit quand la carte est alimentée. Flasher carte hors tension, ou en OTA.", f_warn),
+        ("9. Cavalier JP22 (en parallèle de la diode D5). ÔTÉ : carte seule, ou carte + USB du DevKit, sans risque ; la source doit donner 5,2 V. POSÉ : USB seul (établi), ou source à 5,0 V ; alors JAMAIS l'USB et l'alimentation ensemble.", f_warn),
+        ("10. Prix non relevés au 22/11/2026 : 1N5822, 220 µF, bloc 5 V 3 A, protection amont. À compléter dans la feuille Prix.", f_base),
         ("", None),
         ("Mise à jour", f_bold),
         ("Classeur généré depuis la BOM : `python3 achats/build_achats.py` (dossier hardware/n3-universal). Prix : achats/prix.py ; "

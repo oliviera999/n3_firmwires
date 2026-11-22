@@ -1,6 +1,7 @@
 name: Hardware CI (n3-universal)
 
-# Gardes de la carte universelle (hardware/n3-universal), rev 0.2.2.
+# Gardes de la carte universelle (hardware/n3-universal), rev 0.3.0 (sans 230 V, sans relais,
+# sans étage transistor : modules relais externes actifs à l'état haut).
 # Job 1 (rapide, Python seul + ngspice) : orientation des MOSFET, cohérence firmwares <-> PCB,
 #   sérigraphie, corps 3D, rôles, banc SPICE sur la netlist exportée par KiCad,
 #   liste d'achats synchronisée avec la BOM (achats/build_achats.py --check), vues Fritzing
@@ -57,20 +58,30 @@ jobs:
       - name: Banc SPICE — rail capteurs sur la netlist KiCad (rail coupé GPIO13 bas)
         working-directory: hardware/n3-universal
         run: python3 simulation/bench_kicad_netlist.py
-      - name: Simulations ngspice (relais, rail capteurs, alims, mesures)
+      - name: Simulations ngspice (commande des modules relais, rail capteurs, alims, mesures, D5/JP22)
         working-directory: hardware/n3-universal/simulation
         run: |
-          python3 sim1_relay.py > /dev/null
+          python3 sim1_module_cmd.py > /dev/null
           python3 sim2_gate.py > /dev/null
           python3 sim3_power.py > /dev/null
           python3 sim4_adc_rail.py > /dev/null
+          python3 sim7_d7_supply.py > /dev/null
           python3 - <<'EOF'
           import json
-          s1 = json.load(open('out/s1_results.json'))['mc']
-          assert s1['n_vsw_over_300mV'] == 0 and s1['n_vcoil_under_3p75'] == 0, s1
+          s1 = json.load(open('out/s1_results.json'))
+          mc = s1['mc_rs470']          # Rs 470 ohm : tous les tirages collent, transistor du module saturé
+          assert mc['n_sous_3V75'] == 0 and mc['vce_max'] < 0.3, mc
+          for rs, b in s1['demarrage'].items():   # GPIO flottant ou tiré vers +3V3 au reset : relais au repos
+              assert b['flottant']['icoil_mA'] < 0.1 and b['pullup_45k']['icoil_mA'] < 7 and b['pullup_30k']['vcoil'] < 1.0, (rs, b)
+          assert s1['forcage']['470']['on_gpio_bas']['igpio_mA'] < 12, s1['forcage']['470']
           s2 = json.load(open('out/s2_results.json'))
           assert s2['corrige_vto3']['v33_off'] < 0.1 and s2['corrige_vto3']['v33_on'] > 3.2, s2['corrige_vto3']
-          print('simulations : marges relais et rail capteurs OK')
+          s7 = json.load(open('out/s7_results.json'))
+          # règle D7 : source à 5,2 V, cavalier JP22 ôté -> le régulateur du DevKit garde de la marge
+          for r in s7['statique']:
+              if '5,2 V' in r['profil'] and r['d5'] == '1N5822 max':
+                  assert r['marge_regul'] > 0, r
+          print('simulations : commande des modules relais, rail capteurs et marge D5 OK')
           EOF
 
   kicad:

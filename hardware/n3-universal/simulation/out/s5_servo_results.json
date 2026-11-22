@@ -1,130 +1,226 @@
 {
- "bloc 5 V correct (5,0 V, 0,25 Ω) | 0.65 A": {
-  "source": "bloc 5 V correct (5,0 V, 0,25 Ω)",
+ "bloc 5,0 V 0,25 Ω, JP22 ôté | 0.65 A": {
+  "source": "bloc 5,0 V 0,25 Ω, JP22 ôté",
   "i_servo": 0.65,
   "servo": "SG90 bloqué",
-  "v5_min": 4.6001,
-  "v33_min": 3.139035,
+  "v5_min": 4.458036,
+  "v33_min": 2.841932,
+  "ok": false
+ },
+ "bloc 5,0 V 0,25 Ω, JP22 ôté | 1.0 A": {
+  "source": "bloc 5,0 V 0,25 Ω, JP22 ôté",
+  "i_servo": 1.0,
+  "servo": "MG90S bloqué / 2 x SG90",
+  "v5_min": 4.333204,
+  "v33_min": 2.717143,
+  "ok": false
+ },
+ "bloc 5,0 V 0,25 Ω, JP22 ôté | 1.5 A": {
+  "source": "bloc 5,0 V 0,25 Ω, JP22 ôté",
+  "i_servo": 1.5,
+  "servo": "1,5 A",
+  "v5_min": 4.144075,
+  "v33_min": 2.52811,
+  "ok": false
+ },
+ "bloc 5,0 V 0,25 Ω, JP22 ôté | 2.5 A": {
+  "source": "bloc 5,0 V 0,25 Ω, JP22 ôté",
+  "i_servo": 2.5,
+  "servo": "MG996R bloqué",
+  "v5_min": 3.698256,
+  "v33_min": 2.082623,
+  "ok": false
+ },
+ "bloc 5,0 V 0,25 Ω, JP22 posé | 0.65 A": {
+  "source": "bloc 5,0 V 0,25 Ω, JP22 posé",
+  "i_servo": 0.65,
+  "servo": "SG90 bloqué",
+  "v5_min": 4.457568,
+  "v33_min": 3.252187,
   "ok": true
  },
- "bloc 5 V correct (5,0 V, 0,25 Ω) | 1.0 A": {
-  "source": "bloc 5 V correct (5,0 V, 0,25 Ω)",
+ "bloc 5,0 V 0,25 Ω, JP22 posé | 1.0 A": {
+  "source": "bloc 5,0 V 0,25 Ω, JP22 posé",
   "i_servo": 1.0,
   "servo": "MG90S bloqué / 2 x SG90",
-  "v5_min": 4.479885,
-  "v33_min": 3.01882,
-  "ok": false
+  "v5_min": 4.332746,
+  "v33_min": 3.127387,
+  "ok": true
  },
- "bloc 5 V correct (5,0 V, 0,25 Ω) | 1.5 A": {
-  "source": "bloc 5 V correct (5,0 V, 0,25 Ω)",
+ "bloc 5,0 V 0,25 Ω, JP22 posé | 1.5 A": {
+  "source": "bloc 5,0 V 0,25 Ω, JP22 posé",
   "i_servo": 1.5,
   "servo": "1,5 A",
-  "v5_min": 4.299458,
-  "v33_min": 2.838393,
+  "v5_min": 4.14347,
+  "v33_min": 2.938155,
   "ok": false
  },
- "bloc 5 V correct (5,0 V, 0,25 Ω) | 2.5 A": {
-  "source": "bloc 5 V correct (5,0 V, 0,25 Ω)",
+ "bloc 5,0 V 0,25 Ω, JP22 posé | 2.5 A": {
+  "source": "bloc 5,0 V 0,25 Ω, JP22 posé",
   "i_servo": 2.5,
   "servo": "MG996R bloqué",
-  "v5_min": 3.885605,
-  "v33_min": 2.425087,
+  "v5_min": 3.697351,
+  "v33_min": 2.492195,
   "ok": false
  },
- "bloc faible (4,8 V, 0,5 Ω) | 0.65 A": {
-  "source": "bloc faible (4,8 V, 0,5 Ω)",
+ "bloc 5,0 V 0,1 Ω, JP22 posé | 0.65 A": {
+  "source": "bloc 5,0 V 0,1 Ω, JP22 posé",
   "i_servo": 0.65,
   "servo": "SG90 bloqué",
-  "v5_min": 4.087687,
-  "v33_min": 2.627005,
-  "ok": false
- },
- "bloc faible (4,8 V, 0,5 Ω) | 1.0 A": {
-  "source": "bloc faible (4,8 V, 0,5 Ω)",
-  "i_servo": 1.0,
-  "servo": "MG90S bloqué / 2 x SG90",
-  "v5_min": 3.852244,
-  "v33_min": 2.391521,
-  "ok": false
- },
- "bloc faible (4,8 V, 0,5 Ω) | 1.5 A": {
-  "source": "bloc faible (4,8 V, 0,5 Ω)",
-  "i_servo": 1.5,
-  "servo": "1,5 A",
-  "v5_min": 3.42466,
-  "v33_min": 1.963463,
-  "ok": false
- },
- "bloc faible (4,8 V, 0,5 Ω) | 2.5 A": {
-  "source": "bloc faible (4,8 V, 0,5 Ω)",
-  "i_servo": 2.5,
-  "servo": "MG996R bloqué",
-  "v5_min": 2.753921,
-  "v33_min": 1.294537,
-  "ok": false
- },
- "Hi-Link / buck 5 A (5,1 V, 0,1 Ω) | 0.65 A": {
-  "source": "Hi-Link / buck 5 A (5,1 V, 0,1 Ω)",
-  "i_servo": 0.65,
-  "servo": "SG90 bloqué",
-  "v5_min": 4.890449,
+  "v5_min": 4.711032,
   "v33_min": 3.293545,
   "ok": true
  },
- "Hi-Link / buck 5 A (5,1 V, 0,1 Ω) | 1.0 A": {
-  "source": "Hi-Link / buck 5 A (5,1 V, 0,1 Ω)",
+ "bloc 5,0 V 0,1 Ω, JP22 posé | 1.0 A": {
+  "source": "bloc 5,0 V 0,1 Ω, JP22 posé",
   "i_servo": 1.0,
   "servo": "MG90S bloqué / 2 x SG90",
-  "v5_min": 4.829283,
+  "v5_min": 4.646626,
   "v33_min": 3.293545,
   "ok": true
  },
- "Hi-Link / buck 5 A (5,1 V, 0,1 Ω) | 1.5 A": {
-  "source": "Hi-Link / buck 5 A (5,1 V, 0,1 Ω)",
+ "bloc 5,0 V 0,1 Ω, JP22 posé | 1.5 A": {
+  "source": "bloc 5,0 V 0,1 Ω, JP22 posé",
   "i_servo": 1.5,
   "servo": "1,5 A",
-  "v5_min": 4.739598,
-  "v33_min": 3.278498,
+  "v5_min": 4.55158,
+  "v33_min": 3.293545,
   "ok": true
  },
- "Hi-Link / buck 5 A (5,1 V, 0,1 Ω) | 2.5 A": {
-  "source": "Hi-Link / buck 5 A (5,1 V, 0,1 Ω)",
+ "bloc 5,0 V 0,1 Ω, JP22 posé | 2.5 A": {
+  "source": "bloc 5,0 V 0,1 Ω, JP22 posé",
   "i_servo": 2.5,
   "servo": "MG996R bloqué",
-  "v5_min": 4.550335,
-  "v33_min": 3.089199,
-  "ok": false
+  "v5_min": 4.34817,
+  "v33_min": 3.142704,
+  "ok": true
  },
- "même bloc 5 V (0,1 Ω), câble servo séparé | 0.65 A": {
-  "source": "même bloc 5 V (0,1 Ω), câble servo séparé",
+ "bloc faible 4,8 V 0,5 Ω, JP22 posé | 0.65 A": {
+  "source": "bloc faible 4,8 V 0,5 Ω, JP22 posé",
   "i_servo": 0.65,
   "servo": "SG90 bloqué",
-  "v5_min": 4.749044,
-  "v33_min": 3.287979,
-  "ok": true
+  "v5_min": 3.844799,
+  "v33_min": 2.639831,
+  "ok": false
  },
- "même bloc 5 V (0,1 Ω), câble servo séparé | 1.0 A": {
-  "source": "même bloc 5 V (0,1 Ω), câble servo séparé",
+ "bloc faible 4,8 V 0,5 Ω, JP22 posé | 1.0 A": {
+  "source": "bloc faible 4,8 V 0,5 Ω, JP22 posé",
   "i_servo": 1.0,
   "servo": "MG90S bloqué / 2 x SG90",
-  "v5_min": 4.714164,
-  "v33_min": 3.253089,
-  "ok": true
+  "v5_min": 3.586654,
+  "v33_min": 2.381838,
+  "ok": false
  },
- "même bloc 5 V (0,1 Ω), câble servo séparé | 1.5 A": {
-  "source": "même bloc 5 V (0,1 Ω), câble servo séparé",
+ "bloc faible 4,8 V 0,5 Ω, JP22 posé | 1.5 A": {
+  "source": "bloc faible 4,8 V 0,5 Ω, JP22 posé",
   "i_servo": 1.5,
   "servo": "1,5 A",
-  "v5_min": 4.664297,
-  "v33_min": 3.203227,
-  "ok": true
+  "v5_min": 3.11354,
+  "v33_min": 1.908659,
+  "ok": false
  },
- "même bloc 5 V (0,1 Ω), câble servo séparé | 2.5 A": {
-  "source": "même bloc 5 V (0,1 Ω), câble servo séparé",
+ "bloc faible 4,8 V 0,5 Ω, JP22 posé | 2.5 A": {
+  "source": "bloc faible 4,8 V 0,5 Ω, JP22 posé",
   "i_servo": 2.5,
   "servo": "MG996R bloqué",
-  "v5_min": 4.564411,
-  "v33_min": 3.103347,
+  "v5_min": 2.556673,
+  "v33_min": 1.351464,
+  "ok": false
+ },
+ "bloc / buck 5,2 V 0,1 Ω, JP22 ôté | 0.65 A": {
+  "source": "bloc / buck 5,2 V 0,1 Ω, JP22 ôté",
+  "i_servo": 0.65,
+  "servo": "SG90 bloqué",
+  "v5_min": 4.919746,
+  "v33_min": 3.293545,
   "ok": true
+ },
+ "bloc / buck 5,2 V 0,1 Ω, JP22 ôté | 1.0 A": {
+  "source": "bloc / buck 5,2 V 0,1 Ω, JP22 ôté",
+  "i_servo": 1.0,
+  "servo": "MG90S bloqué / 2 x SG90",
+  "v5_min": 4.858658,
+  "v33_min": 3.242306,
+  "ok": true
+ },
+ "bloc / buck 5,2 V 0,1 Ω, JP22 ôté | 1.5 A": {
+  "source": "bloc / buck 5,2 V 0,1 Ω, JP22 ôté",
+  "i_servo": 1.5,
+  "servo": "1,5 A",
+  "v5_min": 4.769095,
+  "v33_min": 3.152751,
+  "ok": true
+ },
+ "bloc / buck 5,2 V 0,1 Ω, JP22 ôté | 2.5 A": {
+  "source": "bloc / buck 5,2 V 0,1 Ω, JP22 ôté",
+  "i_servo": 2.5,
+  "servo": "MG996R bloqué",
+  "v5_min": 4.580291,
+  "v33_min": 2.963968,
+  "ok": false
+ },
+ "bloc / buck 5,2 V 0,25 Ω, JP22 ôté | 0.65 A": {
+  "source": "bloc / buck 5,2 V 0,25 Ω, JP22 ôté",
+  "i_servo": 0.65,
+  "servo": "SG90 bloqué",
+  "v5_min": 4.666422,
+  "v33_min": 3.050284,
+  "ok": false
+ },
+ "bloc / buck 5,2 V 0,25 Ω, JP22 ôté | 1.0 A": {
+  "source": "bloc / buck 5,2 V 0,25 Ω, JP22 ôté",
+  "i_servo": 1.0,
+  "servo": "MG90S bloqué / 2 x SG90",
+  "v5_min": 4.547074,
+  "v33_min": 2.930965,
+  "ok": false
+ },
+ "bloc / buck 5,2 V 0,25 Ω, JP22 ôté | 1.5 A": {
+  "source": "bloc / buck 5,2 V 0,25 Ω, JP22 ôté",
+  "i_servo": 1.5,
+  "servo": "1,5 A",
+  "v5_min": 4.368854,
+  "v33_min": 2.752807,
+  "ok": false
+ },
+ "bloc / buck 5,2 V 0,25 Ω, JP22 ôté | 2.5 A": {
+  "source": "bloc / buck 5,2 V 0,25 Ω, JP22 ôté",
+  "i_servo": 2.5,
+  "servo": "MG996R bloqué",
+  "v5_min": 3.969808,
+  "v33_min": 2.353982,
+  "ok": false
+ },
+ "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé | 0.65 A": {
+  "source": "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé",
+  "i_servo": 0.65,
+  "servo": "SG90 bloqué",
+  "v5_min": 4.612346,
+  "v33_min": 2.996199,
+  "ok": false
+ },
+ "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé | 1.0 A": {
+  "source": "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé",
+  "i_servo": 1.0,
+  "servo": "MG90S bloqué / 2 x SG90",
+  "v5_min": 4.576859,
+  "v33_min": 2.960715,
+  "ok": false
+ },
+ "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé | 1.5 A": {
+  "source": "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé",
+  "i_servo": 1.5,
+  "servo": "1,5 A",
+  "v5_min": 4.526071,
+  "v33_min": 2.909933,
+  "ok": false
+ },
+ "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé | 2.5 A": {
+  "source": "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé",
+  "i_servo": 2.5,
+  "servo": "MG996R bloqué",
+  "v5_min": 4.424135,
+  "v33_min": 2.80801,
+  "ok": false
  }
 }

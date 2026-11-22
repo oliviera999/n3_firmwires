@@ -9,10 +9,10 @@ donc toujours alignés sur la révision exportée.
   BOM-PCBA-socle.csv          pièces posées sur TOUTES les unités, format JLCPCB
                               (`Comment,Designator,Footprint,LCSC Part #`)
   BOM-PCBA-conditionnels.csv  pièces à pose MANUELLE selon le profil d'alimentation
-                              (bloc secteur) — ne jamais les faire assembler
+                              (section bus 12 V ; rev 0.3 : plus de bloc secteur sur la carte)
   CPL-n3-universal-top.csv    positions des pièces du socle (repère des gerbers)
 
-Exclus des deux BOM : A1/A2 (modules enfichés), PS1 (module secteur, à mesurer),
+Exclus des deux BOM : A1/A2 (modules enfichés),
 H* (trous), TP* (points de test = pads nus).
 
 Usage : python3 export_pcba.py   (après export_assembly_preview.py)
@@ -32,12 +32,6 @@ PCBA = EXPORTS / "pcba"
 
 # Pose manuelle, par profil : raison affichée dans la colonne Comment.
 CONDITIONAL = {
-    "J27": "Bornier ENTREE SECTEUR 230V (1=N 2=L) — PROFIL (d) SECTEUR UNIQUEMENT, avec PS1/F1/RV1. "
-           "NE PAS POSER sur une unite 5V, batterie 1S ou bus 12V",
-    "F1": "Porte-fusible 5x20 a capot (BLX-A, pas 22,0) ou clips (pas 22,5) + cartouche T1A CERAMIQUE — "
-          "PROFIL (d) SECTEUR UNIQUEMENT",
-    "RV1": "Varistance 14D471K/10D471K 300VAC (disque, pas 7,5 mm) — PROFIL (d) SECTEUR UNIQUEMENT, "
-           "pose main avec PS1/J27/F1",
     "J26": "Bornier BUS 12V (+/GND) — PROFIL (c) bus 12V ; inutile ailleurs",
     "Q11": "IRF4905 anti-inversion bus 12V — PROFIL (c) uniquement",
     "D8": "TVS 1.5KE18A bus 12V — PROFIL (c) uniquement",
@@ -47,7 +41,7 @@ CONDITIONAL = {
     "J36": "Bornier sortie 12V protegee vers buck externe — PROFIL (c) uniquement",
     "J37": "Bornier sortie 12V protegee vers buck externe — PROFIL (c) uniquement",
 }
-EXCLUDED = {"A1", "A2", "PS1"}
+EXCLUDED = {"A1", "A2"}
 
 
 def load_bom() -> list[dict]:
