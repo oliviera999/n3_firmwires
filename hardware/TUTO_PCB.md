@@ -201,6 +201,14 @@ chauffage **K3** n'a pas de broche 1 : AUTO ou OFF seulement, jamais forcé ON.
 L'état réel de chaque canal se lit sur le header **J38 CMD SENSE** (collecteur : 0 V = relais
 ON, 5 V = OFF).
 
+**Rev 0.3 (2026-11-22) — → remplace le paragraphe ci-dessus pour la n3-universal** : la carte n'a
+plus ni relais ni transistor. Le GPIO attaque la borne **S** d'un module relais externe, actif à
+l'état haut, à travers **470 Ω** ; un rappel de **10 kΩ** tient la ligne à la masse au démarrage.
+`JPn` relie directement la ligne au +3V3 (broche 1, ON) ou à la masse (broche 3, OFF) : c'est la
+résistance série de 470 Ω qui limite alors le courant dans le GPIO (6,5 mA). **JP7** (chauffage)
+et **JP10** (GPIO45 du S3) n'ont pas de broche 1. Plus de header J38 : l'état se lit sur la LED
+du module. Voir `n3-universal/MODULES_RELAIS.md`.
+
 ## 5. La sérigraphie : des règles à connaître
 
 Deux familles de textes, aux rôles complémentaires :

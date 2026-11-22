@@ -47,23 +47,19 @@ SKIP_BOM_REFS = re.compile(
 
 # Mapping (valeur normalisée, famille d'empreinte) -> LCSC Part #.
 # UNIQUEMENT des codes contrôlés sur la fiche LCSC (ceux de
-# exports/pcba/BOM-PCBA-socle.csv, vérifiés le 2026-08-28, + Q11/D9/PS1 le
-# 2026-10-06). La table d'origine contenait des codes inventés (C72503 =
+# exports/pcba/BOM-PCBA-socle.csv, vérifiés le 2026-08-28, + Q11/D9 le
+# 2026-10-06 ; rev 0.3 : relais, Hi-Link, varistance et 1N4007 retirés). La table d'origine contenait des codes inventés (C72503 =
 # condensateur CMS 22 µF pour le NDP6020P, C9135 = connecteur IDC pour le
 # fusible, C293822 inexistant) : une case vide oblige JLCPCB à demander,
 # un mauvais code fait monter la mauvaise pièce.
 LCSC_MAP: dict[tuple[str, str], str] = {
     ("1n4744a", "d_do41"): "C238928",
-    ("1n4007", "d_do41"): "C2457",
     ("1n5822", "d_do201"): "C2476",
     ("1.5ke18a", "d_do201"): "C1666858",
     ("1.5ke6.8a", "d_do201"): "C412500",
     ("bc337-40", "to92"): "C713611",
     ("irf4905", "to220"): "C2564",
     ("ld1117v33", "to220"): "C283467",
-    ("srd-05vdc-sl-c", "relay"): "C35449",
-    ("hlk-20m05", "hilink"): "C465406",
-    ("14d471k", "varistor"): "C111188",
 }
 
 

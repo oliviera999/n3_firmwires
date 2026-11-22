@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Simulation 6 — fermeture de Q7 sur C2 déchargé (rev 0.2.2+, rail commuté msp/n3pp).
 
+Rev 0.3 : D5 = 1N5822 (courbe maximale de models.lib) et C14 220 µF sur VIN_5V ; les sources
+sont réglées à 5,2 V (règle D7). sim7_d7_supply.py compare avec / sans C14 et cavalier posé.
+
 Depuis la rev 0.2.2, C2 (réservoir des servos) est sur LDO_IN, derrière Q7. Sur une unité à
 rail commuté (JP1 ôté), Q7 se ferme à chaque réveil sur un C2 vide : C1 (1000 µF, +5V) se
 partage avec C2 en moins d'une milliseconde et le +5V s'effondre le temps que la source
@@ -32,8 +35,10 @@ M12 vin_raw q12g v5 IRF4905
 R57 q12g 0 100k
 C1 v5 c1e 1000u
 Resr1 c1e 0 0.08
-* DevKit : D5 = pont de fil, AMS1117, 22 uF, ESP32 eveille sans radio (80 mA)
-Rd5 v5 vin5 0.02
+* DevKit : D5 = 1N5822, C14 220 uF, AMS1117, 22 uF, ESP32 eveille sans radio (80 mA)
+D5 v5 vin5 1N5822
+C14 vin5 c14e 220u
+Resr14 c14e 0 0.15
 XU2 vin5 v33 0 AMS1117
 Cdk v33 cdke 22u
 Resrdk cdke 0 0.3
@@ -67,10 +72,10 @@ quit
 """
 
 SOURCES = {
-    "msp1 : boost 5 V limite a 1 A": "Vad vad 0 PWL(0 0 1m 5)\nBsrc vad vin_raw I = min(1.0, max(0,(V(vad)-V(vin_raw))/0.1))\nCbo vin_raw 0 22u",
+    "msp1 : boost 5,2 V limite a 1 A": "Vad vad 0 PWL(0 0 1m 5.2)\nBsrc vad vin_raw I = min(1.0, max(0,(V(vad)-V(vin_raw))/0.1))\nCbo vin_raw 0 22u",
     "bloc 5 V / 0,25 ohm": "Vad vad 0 PWL(0 0 1m 5)\nRs vad vad2 0.25\nLs vad2 vin_raw 1u",
     "bloc faible 4,8 V / 0,5 ohm": "Vad vad 0 PWL(0 0 1m 4.8)\nRs vad vad2 0.5\nLs vad2 vin_raw 1u",
-    "Hi-Link 5,1 V / 0,05 ohm": "Vad vad 0 PWL(0 0 1m 5.1)\nRs vad vad2 0.05\nLs vad2 vin_raw 0.5u",
+    "bloc 5,2 V 3 A / 0,10 ohm": "Vad vad 0 PWL(0 0 1m 5.2)\nRs vad vad2 0.10\nLs vad2 vin_raw 1u",
 }
 C2S = ["470u", "220u", "100u", "1n"]          # 1n = C2 non pose
 VTOS = [-2, -3, -4]

@@ -2,11 +2,15 @@
 """Vues de câblage Fritzing de la carte n3-universal — une par profil (msp1, n3pp,
 ffp5cs 230 V, ffp5cs 12 V).
 
+Rev 0.3 : plus de 230 V ni de relais SUR la carte. Les modules relais (actifs à l'état haut) sont
+dessinés au-dessus, reliés par trois fils (S / +5V / GND) aux borniers J39..J44 ; le 230 V ne
+touche que leurs contacts.
+
 Chaque `.fzz` contient :
   - la carte dessinée À L'ÉCHELLE depuis le PCB routé (`kicad/n3-universal.kicad_pcb`, lu
     sans KiCad par `kicad_pcb_geom.py`) : chaque connecteur à sa vraie place, composants
     posés en couleur / non posés en gris, cavaliers dessinés dans leur position du profil
-    (`achats/inventaire.JUMPER_STATE`), zone 230 V hachurée ;
+    (`achats/inventaire.JUMPER_STATE`) ;
   - les périphériques et sources d'alimentation du profil (boîtes étiquetées, broches
     nommées — d'après `achats/inventaire.OFF`) reliés aux bons borniers par des fils colorés
     (rouge +5 V, orange 3,3 V, noir GND, rouge sombre 12 V, brun L / bleu N en 230 V) ;
@@ -76,26 +80,28 @@ KINDS = {
     "DS3231": ("RTC DS3231 (ZS-042)", ["GND", "VCC", "SDA", "SCL"], "#cfe8ff", 110),
     "INA226": ("INA226", ["VCC", "GND", "SCL", "SDA", "IN+", "IN−"], "#cfe8ff", 120),
     "TP4056": ("TP4056 (protégé)", ["IN+", "IN−", "B+", "B−", "OUT+", "OUT−"], "#cfe8ff", 130),
-    "BOOST": ("Boost MT3608 réglé 5,1 V", ["VIN+", "VIN−", "VOUT+", "VOUT−"], "#cfe8ff", 130),
+    "BOOST": ("Boost MT3608 réglé 5,2 V", ["VIN+", "VIN−", "VOUT+", "VOUT−"], "#cfe8ff", 130),
     "CELL_18650": ("18650 Li-ion", ["+", "−"], "#d8f3dc", 80),
     "PANNEAU_6V": ("Panneau 6 V", ["+", "−"], "#bde0fe", 80),
     "CHARGEUR_5V": ("Chargeur 5 V 2 A (jack)", ["+ centre", "−"], "#ffd6a5", 120),
-    "BUCK": ("Buck MP1584 réglé 5,1 V", ["IN+", "IN−", "OUT+", "OUT−"], "#cfe8ff", 130),
+    "BUCK": ("Buck MP1584 réglé 5,2 V", ["IN+", "IN−", "OUT+", "OUT−"], "#cfe8ff", 130),
     "FUSIBLE_LAME": ("Fusible lame 10 A", ["1", "2"], "#ffadad", 90),
     "AGM_12V": ("Batterie AGM 12 V", ["+", "−"], "#d8f3dc", 100),
     "PWM_SOLAIRE": ("Régulateur PWM", ["PV+", "PV−", "BAT+", "BAT−"], "#bde0fe", 110),
     "PANNEAU_12V": ("Panneau 12 V", ["+", "−"], "#bde0fe", 80),
-    "CORDON_SECTEUR": ("Cordon secteur 230 V", ["L", "N"], "#ffadad", 110),
+    "MODULE_RELAIS": ("Module relais 5 V actif HAUT", ["S", "+", "−", "COM", "NO"], "#bde0fe", 130),
+    "BLOC_5V": ("Bloc 5 V 3 A (jack)", ["+ centre", "−"], "#ffd6a5", 110),
+    "PROTECTION_AMONT": ("Protection amont 230 V", ["L", "N"], "#ffadad", 130),
     "1N4007_EXT": ("1N4007 roue libre", ["K", "A"], "#e2e2e2", 90),
     "POMPE_DC": ("Pompe 12 V", ["+", "−"], "#caffbf", 80),
-    "POMPE_AC": ("Pompe 230 V", ["~", "~"], "#ffadad", 80),
-    "CHARGE_AC": ("Charge 230 V", ["~", "~"], "#ffadad", 90),
+    "POMPE_AC": ("Pompe 230 V", ["L", "N"], "#ffadad", 80),
+    "CHARGE_AC": ("Charge 230 V", ["L", "N"], "#ffadad", 90),
     "CHARGE_DC": ("Charge 12 V", ["+", "−"], "#caffbf", 80),
     "ALIM_POMPE": ("Alim. pompe", ["+", "−"], "#ffd6a5", 90),
     "BUS12": ("Bus 12 V (répartiteur)", ["+", "−"], "#ffd6a5", 110),
 }
 # articles d'inventaire.OFF qui ne se dessinent pas (fournitures, options rangées dans la légende)
-NOT_DRAWN = {"BME280", "MICROSD", "BOITIER", "PRESSE_ETOUPE", "FIL_05", "FIL_15", "CR2032", "FUS_T1A",
+NOT_DRAWN = {"BME280", "MICROSD", "BOITIER", "PRESSE_ETOUPE", "FIL_05", "FIL_15", "CR2032",
              "SUPPORT_18650", "CABLE_USB_JACK"}
 # kinds dessinés qui n'ont pas d'article d'achat (charges du client)
 FREE_KINDS = {"POMPE_DC", "POMPE_AC", "CHARGE_AC", "CHARGE_DC", "ALIM_POMPE", "BUS12"}
@@ -136,11 +142,17 @@ def sensors_common(us=True, ds=True, ldr=True, servos=True, rtc=False):
     return d
 
 
+def relay_module(n, nom, option=False):
+    """Module relais du canal n (1..6) sur son bornier J39..J44 : pad 3 = S, pad 2 = +5V, pad 1 = GND."""
+    ref = f"J{38 + n}"
+    return D(f"rel{n}", "MODULE_RELAIS", nom, {"S": (ref, "3", CSIG[4 + n]), "+": (ref, "2", C5V), "−": (ref, "1", CGND)}, side="top")
+
+
 def relay_loads_ac(chan):
-    """Charges 230 V : L du cordon -> COM ; NO -> charge ; charge -> N du cordon."""
+    """Charges 230 V : L protégée -> COM du module ; NO -> charge ; charge -> N. Rien sur la carte."""
     out = []
-    for k, (ref, kind, nom) in enumerate(chan):
-        out.append(D(f"ld_{ref}", kind, nom, {"~": (ref, "3", CL), "~ ": ("cordon", "N", CN)}, side="top"))
+    for n, kind, nom in chan:
+        out.append(D(f"ld{n}", kind, nom, {"L": (f"rel{n}", "NO", CL), "N": ("prot", "N", CN)}, side="top"))
     return out
 
 
@@ -154,26 +166,34 @@ WIRING = {
         D("panneau", "PANNEAU_6V", "Panneau 6 V 3,8–6 W", {"+": ("tp4056", "IN+", C5V), "−": ("tp4056", "IN−", CGND)}, side="left"),
         D("tp4056", "TP4056", "TP4056 avec protection", {"B+": ("cell", "+", C5V), "B−": ("cell", "−", CGND), "OUT+": ("boost", "VIN+", C5V), "OUT−": ("boost", "VIN−", CGND)}, side="left"),
         D("cell", "CELL_18650", "18650 (à l'ombre)", {"+": ("J25", "1", CSIG[10]), "−": ("J25", "2", CGND)}, side="left"),
-        D("boost", "BOOST", "Boost 5,1 V → J1", {"VOUT+": ("J1", "1", C5V), "VOUT−": ("J1", "2", CGND)}, side="left"),
+        D("boost", "BOOST", "Boost 5,2 V → J1", {"VOUT+": ("J1", "1", C5V), "VOUT−": ("J1", "2", CGND)}, side="left"),
     ],
     "n3pp": sensors_common(us=False, ds=False, ldr=True, servos=False) + [
         *[D(f"sol_{k}", "SOL_CAPA", f"Sol capacitif {k + 1}", {"VCC": (ref, "1", C3V3), "GND": (ref, "3", CGND), "AOUT": (ref, "2", CSIG[k])})
           for k, ref in enumerate(("J31", "J32", "J33", "J34"))],
         D("chargeur", "CHARGEUR_5V", "Chargeur 5 V 2 A, cordon court → jack J2", {"+ centre": ("J2", "1", C5V), "−": ("J2", "2", CGND)}, side="left"),
-        D("alim_pompe", "ALIM_POMPE", "Alim. de la pompe (12 V ou 230 V)", {"+": ("J3", "2", C12V), "−": ("pompe", "−", CGND)}, side="top"),
-        D("pompe", "POMPE_DC", "Pompe d'arrosage (K1)", {"+": ("J3", "3", C12V)}, side="top"),
+        relay_module(1, "Module relais POMPE (K1) — actif à l'état haut"),
+        D("alim_pompe", "ALIM_POMPE", "Alim. de la pompe (12 V ou 230 V)", {"+": ("rel1", "COM", C12V), "−": ("pompe", "−", CGND)}, side="top"),
+        D("pompe", "POMPE_DC", "Pompe d'arrosage", {"+": ("rel1", "NO", C12V)}, side="top"),
         D("rl_pompe", "1N4007_EXT", "Roue libre si pompe DC (K côté +)", {"K": ("pompe", "+", C12V), "A": ("pompe", "−", CGND)}, side="top"),
     ],
     "ffp_230": sensors_common(rtc=True) + [
-        D("cordon", "CORDON_SECTEUR", "Cordon 230 V → J27 (1=N 2=L) — via répartiteur Wago", {"L": [("J27", "2", CL), ("J3", "2", CL)], "N": ("J27", "1", CN)}, side="top"),
-        *relay_loads_ac((("J3", "POMPE_AC", "Pompe aquarium (K1)"), ("J4", "POMPE_AC", "Pompe réservoir (K2)"),
-                         ("J5", "CHARGE_AC", "Chauffage (K3)"), ("J6", "CHARGE_AC", "Lumière / UV (K4)"))),
+        D("bloc", "BLOC_5V", "Bloc 5 V ≥ 2 A → jack J2 (jamais un bloc 12 V)", {"+ centre": ("J2", "1", C5V), "−": ("J2", "2", CGND)}, side="left"),
+        relay_module(1, "Module relais POMPE AQUARIUM (K1)"), relay_module(2, "Module relais POMPE RÉSERVOIR (K2)"),
+        relay_module(3, "Module relais CHAUFFAGE (K3)"), relay_module(4, "Module relais LUMIÈRE (K4)"),
+        D("prot", "PROTECTION_AMONT", "Fusible / disjoncteur + différentiel 30 mA — L vers les COM",
+          {"L": [("rel1", "COM", CL), ("rel2", "COM", CL), ("rel3", "COM", CL), ("rel4", "COM", CL)]}, side="top"),
+        *relay_loads_ac(((1, "POMPE_AC", "Pompe aquarium"), (2, "POMPE_AC", "Pompe réservoir"),
+                         (3, "CHARGE_AC", "Chauffage"), (4, "CHARGE_AC", "Lumière / UV"))),
     ],
     "ffp_12v": sensors_common(rtc=True) + [
-        D("bus", "BUS12", "Bus 12 V après fusible (Wago) → COM des relais", {"+": ("J3", "2", C12V), "−": ("J26", "2", CGND)}, side="top"),
-        D("p_aq", "POMPE_DC", "Pompe aquarium 12 V (K1)", {"+": ("J3", "3", C12V), "−": ("bus", "−", CGND)}, side="top"),
-        D("p_res", "POMPE_DC", "Pompe réservoir 12 V (K2)", {"+": ("J4", "3", C12V), "−": ("bus", "−", CGND)}, side="top"),
-        D("lum", "CHARGE_DC", "Lumière 12 V (K4)", {"+": ("J6", "3", C12V), "−": ("bus", "−", CGND)}, side="top"),
+        relay_module(1, "Module relais POMPE AQUARIUM (K1)"), relay_module(2, "Module relais POMPE RÉSERVOIR (K2)"),
+        relay_module(4, "Module relais LUMIÈRE (K4)"),
+        D("bus", "BUS12", "Bus 12 V après fusible (Wago) → COM des modules",
+          {"+": [("rel1", "COM", C12V), ("rel2", "COM", C12V), ("rel4", "COM", C12V)], "−": ("J26", "2", CGND)}, side="top"),
+        D("p_aq", "POMPE_DC", "Pompe aquarium 12 V", {"+": ("rel1", "NO", C12V), "−": ("bus", "−", CGND)}, side="top"),
+        D("p_res", "POMPE_DC", "Pompe réservoir 12 V", {"+": ("rel2", "NO", C12V), "−": ("bus", "−", CGND)}, side="top"),
+        D("lum", "CHARGE_DC", "Lumière 12 V", {"+": ("rel4", "NO", C12V), "−": ("bus", "−", CGND)}, side="top"),
         D("fus", "FUSIBLE_LAME", "Fusible lame 7,5–10 A au plus près de la batterie", {"2": ("bus", "+", C12V)}, side="top"),
         D("agm", "AGM_12V", "AGM 12 V", {"+": ("fus", "1", C12V), "−": ("bus", "−", CGND)}, side="top"),
         D("pwm", "PWM_SOLAIRE", "Régulateur PWM — carte sur BATTERIE, pas sur LOAD", {"BAT+": ("agm", "+", C12V), "BAT−": ("agm", "−", CGND)}, side="top"),
@@ -187,24 +207,24 @@ WIRING = {
 # fils supplémentaires entre deux broches de la carte elle-même
 BOARD_WIRES = {
     "n3pp": [(("J25", "1"), ("J18", "1"), CSIG[10], "J25-1 → +5V : sinon « batterie vide » et veille d'urgence")],
-    "ffp_12v": [(("J4", "2"), ("J3", "2"), C12V, ""), (("J6", "2"), ("J4", "2"), C12V, "")],
-    "ffp_230": [(("J4", "2"), ("J3", "2"), CL, ""), (("J5", "2"), ("J4", "2"), CL, ""), (("J6", "2"), ("J5", "2"), CL, "")],
 }
 LEGENDE = {
-    "msp1": ["Alimentation : panneau 6 V → TP4056 → 18650 → boost 5,1 V → J1.",
-             "Servos, OLED et capteurs coupés en sommeil (JP1 parqué).",
+    "msp1": ["Alimentation : panneau 6 V → TP4056 → 18650 → boost 5,2 V → J1. JP22 ôté.",
+             "Servos, OLED et capteurs coupés en sommeil (JP1 parqué). C2 = 100 µF sur cette unité.",
              "Options non dessinées : BME280 ×2 (0x76 int., 0x77 ext.) sur J21 / J14."],
-    "n3pp": ["Jamais d'alimentation par le micro-USB du DevKit : jack J2.",
+    "n3pp": ["Chargeur 5,0 V sur le jack J2, JP22 POSÉ : jamais l'USB du DevKit en même temps.",
+             "Module relais ACTIF A L'ÉTAT HAUT (KY-019) : S, +5V, GND sur J39. Le 230 V ne touche que le module.",
              "Relier J25-1 au +5V (J18-1) : sinon le firmware lit une batterie vide.",
              "Option non dessinée : BME280 (0x76) sur J21."],
-    "ffp_230": ["ZONE 230 V : boîtier isolant fermé, différentiel 30 mA, supervision adulte.",
-                "H1 et H5 : vis NYLON. J1 seulement sur table, jamais avec le secteur.",
-                "K5 / K6 (J23 / J24) libres. Options : microSD (S3 seulement), INA226.",
-                "COM des relais (J3-2 … J6-2) pontés entre eux par un fil 1,5 mm² : la phase L arrive sur J3-2."],
-    "ffp_12v": ["Carte sur les bornes BATTERIE du régulateur, jamais sur LOAD.",
-                "Pompes 12 V sur les CONTACTS des relais ; diode de roue libre sur chaque pompe.",
-                "K3 chauffage : interdit sur batterie (firmware). Options : INA226 ×2 (0x40 / 0x44), microSD.",
-                "COM des relais (J3-2, J4-2, J6-2) pontés entre eux par un fil 1,5 mm² depuis le bus +12 V."],
+    "ffp_230": ["PAS DE 230 V SUR LA CARTE : il ne passe que par les contacts des modules relais.",
+                "Modules et charges en coffret isolant fermé, protection amont + différentiel 30 mA, supervision adulte.",
+                "Modules ACTIFS A L'ÉTAT HAUT (KY-019) : 3 fils par module vers J39-J42 (S / +5V / GND).",
+                "JP22 ôté si le bloc donne 5,2 V ; posé s'il ne dépasse pas 5,0 V (alors jamais d'USB en même temps).",
+                "AUX1 / AUX2 (J43 / J44) libres. Options : microSD (S3 seulement), INA226."],
+    "ffp_12v": ["Carte sur les bornes BATTERIE du régulateur, jamais sur LOAD. Buck réglé 5,2 V, JP22 ôté.",
+                "Pompes 12 V sur les CONTACTS des modules relais ; diode de roue libre sur chaque pompe.",
+                "Modules ACTIFS A L'ÉTAT HAUT (KY-019) : 3 fils par module vers J39, J40, J42 (S / +5V / GND).",
+                "K3 chauffage (J41) : interdit sur batterie (firmware), module en option. Options : INA226 ×2, microSD."],
 }
 
 # ----------------------------------------------------------------------------- carte (SVG)
@@ -238,14 +258,6 @@ def board_svg(prof, fps, conn_index):
          f'<rect x="0" y="0" width="{W * S}" height="{H * S}" rx="30" ry="30" fill="#2e7d32" stroke="#1b5e20" stroke-width="6"/>',
          '<defs><pattern id="hz" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
          '<rect width="40" height="40" fill="#ffcccc" fill-opacity="0.25"/><line x1="0" y1="0" x2="0" y2="40" stroke="#c1121f" stroke-width="6" stroke-opacity="0.5"/></pattern></defs>']
-    # zone 230 V (au-dessus de la fente d'isolement horizontale)
-    mz = [s for s in G.SLOTS if s[2] - s[0] > 30]
-    if mz:
-        sx0, sy0, sx1, sy1 = mz[0]
-        o.append(f'<rect x="{(sx0 - 2 - x0) * S}" y="0" width="{(sx1 + 2 - sx0 + 2) * S}" height="{(sy1 - y0) * S}" fill="url(#hz)"/>')
-        o.append(f'<text x="{(sx0 + 4 - x0) * S}" y="{(sy1 - 18 - y0) * S}" font-family="DejaVu Sans, sans-serif" font-size="60" font-weight="bold" fill="#c1121f" fill-opacity="0.6">ZONE 230 V</text>')
-    for sx0, sy0, sx1, sy1 in G.SLOTS:
-        o.append(f'<rect x="{(sx0 - x0) * S}" y="{(sy0 - y0) * S}" width="{(sx1 - sx0) * S}" height="{(sy1 - sy0) * S}" fill="#ffffff"/>')
     pins = {}
     texts = []
     for ref, f in sorted(fps.items(), key=lambda kv: I.natkey(kv[0])):
@@ -259,8 +271,6 @@ def board_svg(prof, fps, conn_index):
             continue
         if fam == "MountingHole":
             o.append(f'<circle cx="{(f["pos"][0] - x0) * S}" cy="{(f["pos"][1] - y0) * S}" r="16" fill="#ffffff" stroke="#999999" stroke-width="3"/>')
-            if ref in ("H1", "H5"):
-                texts.append((f["pos"][0], f["pos"][1] + 5.5, f"{ref} NYLON", "#ffe066", 26))
             continue
         if not posed:
             o.append(f'<rect x="{(cx0 - x0) * S}" y="{(cy0 - y0) * S}" width="{(cx1 - cx0) * S}" height="{(cy1 - cy0) * S}" rx="6" fill="#9aa5a0" fill-opacity="0.35" stroke="#cfd8d3" stroke-width="3" stroke-dasharray="10,8"/>')
@@ -286,11 +296,9 @@ def board_svg(prof, fps, conn_index):
         label = None
         if ref.startswith("JP"):
             n = int(ref[2:])
-            label = f"{ref} {jp[ref]}" if ref in jp else (ref if not posed else (f"{ref} AUTO" if 5 <= n <= 10 else f"{ref} ouvert"))
-        elif ref.startswith("J") or ref.startswith("K") or ref in ("PS1", "A1", "U1", "F1", "RV1", "LED5") or ref.startswith("Q"):
+            label = f"{ref} {jp[ref]}" if ref in jp else (ref if not posed else (f"{ref} AUTO" if 5 <= n <= 10 else (f"{ref} ôté" if n == 22 else f"{ref} ouvert")))
+        elif ref.startswith("J") or ref in ("A1", "U1", "LED5", "D5") or ref.startswith("Q"):
             label = ref if ref != "A1" else "A1 — ESP32 DevKitC 38 broches\n(enfiché, jamais soudé)"
-            if ref.startswith("K"):
-                label = f"{ref} relais"
         elif ref.startswith("LED"):
             label = ref
         if label:

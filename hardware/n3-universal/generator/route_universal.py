@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""Routage de la variante 230 V — pipeline reproductible.
+"""Routage de la carte n3-universal — pipeline reproductible (rev 0.3 : plus de 230 V).
 
 Étapes :
- 1. Copie temporaire de la carte : nets secteur (REL*_COM/NO/NC) retirés des pads
-    + zones interdites (rule areas) posées sur la zone secteur → export Specctra DSN.
-    L'autorouteur ne voit donc NI les nets secteur, NI la zone secteur.
- 2. freerouting (headless, Xvfb) route uniquement la logique.
- 3. Import de la session .ses dans la carte réelle (qui garde ses nets secteur).
- 4. Routage SECTEUR déterministe, tracé en dur (2,5 mm, F.Cu) : lignes droites
-    bornier <-> contacts, COM passant entre les broches bobine (>=3 mm partout).
- 5. Remplissage des zones GND (limitées géométriquement hors zone secteur).
- 6. Vérification : DRC KiCad (avec la règle .kicad_dru mains<->logique 3 mm)
-    + contrôle géométrique indépendant en Python (distance min cuivre secteur
-    <-> cuivre logique >= 3 mm).
+ 0. (option --seed) AMORCE : le cuivre d'une carte déjà validée (la 0.2.3) est repris
+    sur la carte fraîchement régénérée — pistes et vias des nets qui existent encore.
+    Ce qui heurte une pastille déplacée ou sort du nouveau contour est retiré (verdict
+    du DRC KiCad), puis les bouts de piste laissés sans extrémité raccordée.
+ 1. Copie temporaire de la carte, zones GND retirées, bandes interdites le long des
+    bords → export Specctra DSN.
+ 2. freerouting (headless, Xvfb) complète le routage ; il conserve l'amorce.
+ 3. Import de la session .ses, ponts des rangées doublées A1/A2.
+ 4. Remplissage des zones GND, vias de couture, pastilles GND mal reliées.
+ 5. Bilan DRC KiCad (erreurs, liaisons non routées).
 
-Usage : python3 route_universal.py [--jar /chemin/freerouting.jar]
+Jusqu'à la 0.2.3 ce script traçait aussi en dur les pistes secteur (relais, Hi-Link) et
+contrôlait leur écart au reste : ces étapes ont disparu avec le 230 V (rev 0.3).
+
+Usage : python3 route_universal.py [--jar freerouting.jar] [--seed ancienne_carte.kicad_pcb]
 Prérequis : kicad-cli + module python pcbnew (KiCad 8 à 10 ; kicad-cli localisé
 par kicad_tools), java, xvfb-run (Linux). Sur la carte livrée, NE PAS relancer :
 le routage est figé, les retouches passent par finalize_board.py.
@@ -23,6 +25,7 @@ le routage est figé, les retouches passent par finalize_board.py.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import shutil
 import subprocess
@@ -37,17 +40,6 @@ from kicad_tools import kicad_cli
 HERE = Path(__file__).resolve().parent
 KICAD = HERE.parent / "kicad"
 BOARD_PATH = KICAD / "n3-universal.kicad_pcb"
-
-CHANNELS = [(1, 58.0), (2, 92.0), (3, 126.0), (4, 160.0), (5, 194.0), (6, 228.0)]  # (n, x centre relais)
-MAINS_NETS = ({f"REL{n}_{c}" for n in range(1, 7) for c in ("COM", "NO", "NC")}
-              | {"MAINS_L", "MAINS_LF", "MAINS_N"})
-# nets pré-routés à la main (retirés du DSN comme les nets secteur)
-HAND_NETS = MAINS_NETS
-MAINS_WIDTH_MM = 2.5
-RV1_STUB_MM = 2.0
-MIN_GAP_MM = 3.0
-# Plan GND coulé <-> cuivre secteur (ligne de fuite renforcée, cf. .kicad_dru)
-MIN_PLANE_GAP_MM = 6.5
 
 FMM = pcbnew.FromMM
 TMM = pcbnew.ToMM
@@ -68,14 +60,10 @@ def set_via_width(v, width_iu) -> None:
     except TypeError:
         v.SetWidth(width_iu)
 
-# Amorces de routage : stubs posés AVANT le routage complet (freerouting
-# préserve l'existant). Le port I2C J14 + C4 (colonne gauche, pincés entre le
-# bord et le canal relais K1) sont reproductiblement inatteignables sans elles.
-# Amorces : pistes posées AVANT le routage (freerouting les préserve).
-SEED_TRACKS = [
-    # EN : pad A1-30 pincé sous la zone antenne, échappée ouest
-    ("EN", 96.5, 111, 100, 111),
-]
+# Amorces ponctuelles : pistes posées AVANT le routage (freerouting les préserve).
+# Vide en rev 0.3 : l'amorce « EN » de la 0.2.3 (96,5 ; 111) -> (100 ; 111) restait sans
+# extrémité raccordée une fois le net routé autrement (revue du 2026-11-18).
+SEED_TRACKS: list[tuple] = []
 
 
 def apply_seed_tracks():
@@ -151,7 +139,8 @@ def rename_devkit_alt_pads(pcb_path: Path) -> int:
 
 
 def export_logic_dsn(dsn_path: Path):
-    """Carte temporaire sans nets secteur + keepouts → DSN pour freerouting."""
+    """Carte temporaire sans zones GND + bandes interdites aux bords → DSN pour freerouting."""
+    import generate as g
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td) / BOARD_PATH.name
         shutil.copy(BOARD_PATH, tmp)
@@ -160,34 +149,13 @@ def export_logic_dsn(dsn_path: Path):
         shutil.copy(BOARD_PATH.with_suffix(".kicad_pro"),
                     tmp.with_suffix(".kicad_pro"))
         b = pcbnew.LoadBoard(str(tmp))
-        n_removed = 0
-        for fp in b.GetFootprints():
-            for pad in fp.Pads():
-                if pad.GetNetname() in HAND_NETS:
-                    pad.SetNetCode(0)
-                    n_removed += 1
-        # bande secteur + boîtes autour du pad/piste COM de chaque canal
-        # bande secteur + boîtes autour du pad/piste COM de chaque canal
-        mk_rule_area(b, 44, 40, 246, 74)
-        for _n, x in CHANNELS:
-            mk_rule_area(b, x - 4.6, 74, x + 4.6, 86.5)
         # bandes le long des bords : l'autorouteur doit respecter
         # l'edge clearance de 0.5 mm (le DSN ne la transmet pas)
-        import generate as g
         bx0, by0, bx1, by1 = g.BOARD['x0'], g.BOARD['y0'], g.BOARD['x1'], g.BOARD['y1']
         mk_rule_area(b, bx0, by0, bx1, by0 + 0.7)
         mk_rule_area(b, bx0, by1 - 0.7, bx1, by1)
         mk_rule_area(b, bx0, by0, bx0 + 0.7, by1)
         mk_rule_area(b, bx1 - 0.7, by0, bx1, by1)
-        # zones SECTEUR interdites a l'autorouteur (bande contacts relais +
-        # coin PSU Hi-Link) : les pistes secteur sont tracees en dur ensuite.
-        mk_rule_area(b, 40, 40, 247, 70)
-        mk_rule_area(b, 247, 40, 318, 73)
-        # keepouts sur les fentes d'isolement (le DSN n'exporte pas les
-        # découpes internes : sans ça l'autorouteur les traverse/frôle)
-        import generate as g
-        for sx0, sy0, sx1, sy1 in g.SLOTS:
-            mk_rule_area(b, sx0 - 0.5, sy0 - 0.5, sx1 + 0.5, sy1 + 0.5)
         # retire les zones GND de la copie : freerouting doit router GND en
         # pistes réelles (sinon il se repose sur un plan idéal et le
         # remplissage réel laisse des pads GND dans des poches isolées)
@@ -195,7 +163,7 @@ def export_logic_dsn(dsn_path: Path):
             b.Delete(z)
         pcbnew.SaveBoard(str(tmp), b)
         ok = pcbnew.ExportSpecctraDSN(b, str(dsn_path))
-        print(f"DSN logique : {ok} ({n_removed} pads secteur masqués)")
+        print(f"DSN : {ok}")
         return ok
 
 
@@ -228,10 +196,10 @@ def prepare_freerouting_settings() -> None:
                 print(f"freerouting : freerouting.json illisible ({e})")
 
 
-def run_freerouting(jar: Path, dsn: Path, ses: Path):
+def run_freerouting(jar: Path, dsn: Path, ses: Path, passes: int = 60):
     prepare_freerouting_settings()
     cmd = ["xvfb-run", "-a", "java", "-jar", str(jar), "-de", str(dsn),
-           "-do", str(ses), "-mp", "60", "-mt", "1", "-dr"]
+           "-do", str(ses), "-mp", str(passes), "-mt", "1", "-dr"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3300)
     tail = "\n".join(r.stdout.splitlines()[-3:])
     print(tail)
@@ -280,50 +248,272 @@ def add_devkit_alt_tracks(b) -> int:
     return n
 
 
-def add_mains_tracks(b):
-    """Pistes secteur rectilignes. Bornier (pads y=50) : 1=NC 2=COM 3=NO.
-    Relais rot 90 en (x, 78) : COM (x,78), NO (x+6.05,63.85), NC (x-6,63.8)."""
-    nets = b.GetNetsByName()
+def _drc(board_path: Path, extra: tuple[str, ...] = ()) -> dict:
+    """DRC KiCad au format JSON (toutes sévérités)."""
+    rpt = Path(tempfile.mkdtemp()) / "drc.json"
+    subprocess.run([kicad_cli(), "pcb", "drc", "--severity-all", "--format", "json", *extra,
+                    "-o", str(rpt), str(board_path)], capture_output=True, text=True)
+    return json.loads(rpt.read_text(encoding="utf-8"))
 
-    def seg(x0, y0, x1, y1, netname, width=MAINS_WIDTH_MM):
-        t = pcbnew.PCB_TRACK(b)
-        t.SetStart(pcbnew.VECTOR2I(FMM(x0), FMM(y0)))
-        t.SetEnd(pcbnew.VECTOR2I(FMM(x1), FMM(y1)))
-        t.SetWidth(FMM(width))
-        t.SetLayer(pcbnew.F_Cu)
-        t.SetNet(nets[netname])
-        b.Add(t)
 
-    for n, x in CHANNELS:
-        # COM : tout droit entre les broches bobine puis entre NO/NC
-        seg(x, 78, x, 50, f"REL{n}_COM")
-        # NO : contact haut-droit -> borne 3 (x+5.08)
-        seg(x + 6.05, 63.85, x + 6.05, 58, f"REL{n}_NO")
-        seg(x + 6.05, 58, x + 5.08, 54, f"REL{n}_NO")
-        seg(x + 5.08, 54, x + 5.08, 50, f"REL{n}_NO")
-        # NC : contact haut-gauche -> borne 1 (x-5.08)
-        seg(x - 6.0, 63.8, x - 6.0, 58, f"REL{n}_NC")
-        seg(x - 6.0, 58, x - 5.08, 54, f"REL{n}_NC")
-        seg(x - 5.08, 54, x - 5.08, 50, f"REL{n}_NC")
-    # Bloc PSU secteur : J27 (1=N a 250,46 ; 2=L a 255.08,46) -> F1 (268.5,44)/(268.5,66.5)
-    # -> RV1 (252,60)=N / (259.5,64.4)=LF -> HLK PS1 (303,46)=LF / (294,46)=N.
-    # Rev 0.2 : F1 decale de +2,5 mm (porte-fusible universel + varistance 14 mm).
-    # Geometrie revue a l'audit final rev 0.1 : l'ancien trace faisait passer L a
-    # 0,75 mm du pad N de J27 et N // LF a 1,5 mm — ecarts L<->N<->LF desormais
-    # >= 3 mm partout hors pas propre des composants (bornier 5,08 / RV1 7,5 mm).
-    # Les deux amorces de RV1 sont à 2,0 mm (largeur des pads) : à 2,5 mm elles
-    # ramenaient l'écart L<->N à 2,5 mm au droit de la varistance (audit SEC-01).
-    # La branche varistance ne porte aucun courant de charge.
-    psu = [
-        ("MAINS_L", 255.08, 46, 268.5, 44),
-        ("MAINS_N", 250, 46, 250, 60), ("MAINS_N", 250, 60, 252, 60, RV1_STUB_MM),
-        ("MAINS_N", 250, 52, 288, 52), ("MAINS_N", 288, 52, 294, 46),
-        ("MAINS_LF", 268.5, 66.5, 262, 66.5), ("MAINS_LF", 262, 66.5, 259.5, 64.4, RV1_STUB_MM),
-        ("MAINS_LF", 268.5, 66.5, 303, 66.5), ("MAINS_LF", 303, 66.5, 303, 46),
-    ]
-    for netname, x0, y0, x1, y1, *w in psu:
-        seg(x0, y0, x1, y1, netname, *w)
-    print("pistes secteur ajoutées :", 7 * len(CHANNELS) + len(psu))
+def remove_dangling(b) -> int:
+    """Retire, jusqu'à stabilité, les pistes dont une extrémité n'est raccordée à rien
+    (ni pastille, ni via, ni autre piste du même net sur la même couche) et les vias
+    qui ne relient plus rien. Les vias GND libres partent aussi : add_stitching_vias
+    reposera la grille de couture."""
+    pads_by_net: dict[str, list] = {}
+    for fp in b.GetFootprints():
+        for pad in fp.Pads():
+            pads_by_net.setdefault(pad.GetNetname(), []).append(pad)
+    total = 0
+    while True:
+        segs = [t for t in b.GetTracks() if t.GetClass() != "PCB_VIA"]
+        vias = [t for t in b.GetTracks() if t.GetClass() == "PCB_VIA"]
+        by_net: dict[str, list] = {}
+        for t in segs:
+            by_net.setdefault(t.GetNetname(), []).append(t)
+        vias_by_net: dict[str, list] = {}
+        for v in vias:
+            vias_by_net.setdefault(v.GetNetname(), []).append(v)
+
+        def anchored(t, p) -> bool:
+            net, layer = t.GetNetname(), t.GetLayer()
+            for pad in pads_by_net.get(net, ()):
+                if pad.IsOnLayer(layer) and pad.HitTest(p):
+                    return True
+            px, py = TMM(p.x), TMM(p.y)
+            for v in vias_by_net.get(net, ()):
+                q = v.GetPosition()
+                if math.hypot(px - TMM(q.x), py - TMM(q.y)) <= via_width_mm(v) / 2:
+                    return True
+            for o in by_net.get(net, ()):
+                if o is t or o.GetLayer() != layer:
+                    continue
+                s, e = o.GetStart(), o.GetEnd()
+                if seg_dist((px, py, px, py), (TMM(s.x), TMM(s.y), TMM(e.x), TMM(e.y))) <= TMM(o.GetWidth()) / 2:
+                    return True
+            return False
+
+        dead = [t for t in segs if not (anchored(t, t.GetStart()) and anchored(t, t.GetEnd()))]
+        dead_ids = {id(t) for t in dead}
+        for v in vias:
+            net = v.GetNetname()
+            q = v.GetPosition()
+            qx, qy, r = TMM(q.x), TMM(q.y), via_width_mm(v) / 2
+            layers = set()
+            for o in by_net.get(net, ()):
+                if id(o) in dead_ids:
+                    continue
+                for p in (o.GetStart(), o.GetEnd()):
+                    if math.hypot(TMM(p.x) - qx, TMM(p.y) - qy) <= r:
+                        layers.add(o.GetLayer())
+            on_pad = any(pad.HitTest(q) for pad in pads_by_net.get(net, ()))
+            if len(layers) < 2 and not (layers and on_pad):
+                dead.append(v)
+        if not dead:
+            return total
+        for t in dead:
+            b.Delete(t)
+        total += len(dead)
+
+
+def seed_from_board(old_path: Path) -> None:
+    """Amorce : reprend le cuivre d'une carte validée (méthode de la 0.2.2, README).
+
+    Sont repris les pistes et vias dont le net existe encore sous le même nom. Le DRC
+    KiCad désigne ensuite ce qui ne tient plus (pastille nouvelle ou déplacée, contour
+    réduit, perçage) : ces éléments sont retirés, puis les tronçons devenus orphelins.
+    """
+    import generate as g
+    b = pcbnew.LoadBoard(str(BOARD_PATH))
+    if any(True for _ in b.GetTracks()):
+        sys.exit("amorce : la carte porte déjà des pistes (régénérer avec generate.py --regen-pcb)")
+    old = pcbnew.LoadBoard(str(old_path))
+    x0, y0, x1, y1 = (g.BOARD[k] for k in ("x0", "y0", "x1", "y1"))
+
+    def inside(p, margin):
+        return x0 + margin <= TMM(p.x) <= x1 - margin and y0 + margin <= TMM(p.y) <= y1 - margin
+
+    kept = lost_net = lost_edge = 0
+    for t in old.GetTracks():
+        ni = b.FindNet(t.GetNetname()) if t.GetNetname() else None
+        if ni is None:
+            lost_net += 1
+            continue
+        if t.GetClass() == "PCB_VIA":
+            if not inside(t.GetPosition(), 0.5 + via_width_mm(t) / 2):
+                lost_edge += 1
+                continue
+            v = pcbnew.PCB_VIA(b)
+            v.SetPosition(t.GetPosition())
+            set_via_width(v, FMM(via_width_mm(t)))
+            v.SetDrill(t.GetDrill())
+            v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
+            v.SetNet(ni)
+            b.Add(v)
+        else:
+            m = 0.5 + TMM(t.GetWidth()) / 2
+            if not (inside(t.GetStart(), m) and inside(t.GetEnd(), m)):
+                lost_edge += 1
+                continue
+            n = pcbnew.PCB_TRACK(b)
+            n.SetStart(t.GetStart())
+            n.SetEnd(t.GetEnd())
+            n.SetWidth(t.GetWidth())
+            n.SetLayer(t.GetLayer())
+            n.SetNet(ni)
+            b.Add(n)
+        kept += 1
+    # Changements de couche qui passaient par une pastille traversante disparue : une
+    # piste F.Cu et une piste B.Cu du même net s'y rejoignaient (le tronc +5V de la 0.2.3
+    # changeait ainsi de couche sur les pastilles des résistances de LED). Un via les
+    # relie de nouveau, sinon tout le tronc part au tri des tronçons orphelins.
+    new_pads = {(pad.GetPosition().x, pad.GetPosition().y) for fp in b.GetFootprints() for pad in fp.Pads()}
+    ends: dict[tuple, set] = {}
+    for t in b.GetTracks():
+        if t.GetClass() == "PCB_VIA":
+            continue
+        for q in (t.GetStart(), t.GetEnd()):
+            ends.setdefault((t.GetNetname(), q.x, q.y), set()).add(t.GetLayer())
+    wide = {"+5V", "GND", "+3V3_SW", "VIN_5V", "VIN_RAW", "LDO_IN", "VBAT12_IN", "VBAT12_PROT"}
+    n_via = 0
+    for fp in old.GetFootprints():
+        for pad in fp.Pads():
+            q, net = pad.GetPosition(), pad.GetNetname()
+            if not net or pad.GetDrillSize().x == 0 or (q.x, q.y) in new_pads:
+                continue
+            if len(ends.get((net, q.x, q.y), ())) < 2 or not inside(q, 1.0):
+                continue
+            v = pcbnew.PCB_VIA(b)
+            v.SetPosition(q)
+            set_via_width(v, FMM(1.0 if net in wide else 0.7))
+            v.SetDrill(FMM(0.5 if net in wide else 0.35))
+            v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
+            v.SetNet(b.FindNet(net))
+            b.Add(v)
+            new_pads.add((q.x, q.y))
+            n_via += 1
+    pcbnew.SaveBoard(str(BOARD_PATH), b)
+    print(f"amorce : {kept} éléments repris, {lost_net} sur des nets disparus, {lost_edge} hors du nouveau contour ; "
+          f"{n_via} vias à la place de pastilles disparues")
+    # Raccords ponctuels AVANT le tri : ils sauvent les tronçons qu'ils prolongent. En
+    # cas de conflit avec un reste de l'ancien cuivre, c'est l'ancien qui part.
+    apply_seed_tracks()
+    patch = {(n, FMM(xa), FMM(ya), FMM(xb), FMM(yb)) for n, xa, ya, xb, yb, *_ in SEED_TRACKS}
+
+    def is_patch(t) -> bool:
+        if t.GetClass() == "PCB_VIA":
+            return False
+        s_, e_ = t.GetStart(), t.GetEnd()
+        return (t.GetNetname(), s_.x, s_.y, e_.x, e_.y) in patch
+
+    for it in range(8):
+        rep = _drc(BOARD_PATH)
+        bad = {i.get("uuid") for v in rep.get("violations", []) if v.get("severity") == "error"
+               for i in v.get("items", [])}
+        b = pcbnew.LoadBoard(str(BOARD_PATH))
+        victims = [t for t in b.GetTracks() if t.m_Uuid.AsString() in bad and not is_patch(t)]
+        if it == 0:   # qui gêne ? (aide au placement : nombre de conflits par composant)
+            who: dict[str, int] = {}
+            for v in rep.get("violations", []):
+                if v.get("severity") != "error":
+                    continue
+                for i in v.get("items", []):
+                    d = i.get("description", "")
+                    if " of " in d and "pad" in d:
+                        who[d.rsplit(" of ", 1)[1]] = who.get(d.rsplit(" of ", 1)[1], 0) + 1
+            print("amorce : conflits par composant :", ", ".join(f"{k} {n}" for k, n in sorted(who.items())))
+        if not victims:
+            if bad:
+                print(f"amorce : {len(bad)} élément(s) encore en conflit, à traiter à la main")
+            break
+        for t in victims:
+            b.Delete(t)
+        pcbnew.SaveBoard(str(BOARD_PATH), b)
+        print(f"amorce : {len(victims)} éléments en conflit retirés (passe {it + 1})")
+    # Une piste coupée par une pastille nouvelle reste en place des deux côtés de la
+    # coupure : l'autorouteur n'a plus qu'à refaire le raccord (quelques millimètres) au
+    # lieu de retracer toute la liaison. Seuls partent ici les îlots qui ne touchent plus
+    # aucune pastille ; les bouts morts sont retirés APRES le routage (prune_dangling_drc).
+    b = pcbnew.LoadBoard(str(BOARD_PATH))
+    n = remove_floating(b)
+    pcbnew.SaveBoard(str(BOARD_PATH), b)
+    left = sum(1 for _ in b.GetTracks())
+    print(f"amorce : {n} éléments en îlots sans pastille retirés ; {left} éléments de cuivre conservés")
+
+
+def remove_floating(b) -> int:
+    """Retire les pistes et vias qui ne sont reliés, de proche en proche, à aucune pastille
+    de leur net (freerouting chercherait à raccorder ces îlots comme s'ils étaient utiles)."""
+    items = list(b.GetTracks())
+    parent = list(range(len(items)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def geom(t):
+        if t.GetClass() == "PCB_VIA":
+            q = t.GetPosition()
+            return (TMM(q.x), TMM(q.y), TMM(q.x), TMM(q.y), via_width_mm(t) / 2, None)
+        s_, e_ = t.GetStart(), t.GetEnd()
+        return (TMM(s_.x), TMM(s_.y), TMM(e_.x), TMM(e_.y), TMM(t.GetWidth()) / 2, t.GetLayer())
+
+    by_net: dict[str, list[int]] = {}
+    g_ = [geom(t) for t in items]
+    for i, t in enumerate(items):
+        by_net.setdefault(t.GetNetname(), []).append(i)
+    for idx in by_net.values():
+        for a_i, i in enumerate(idx):
+            xi0, yi0, xi1, yi1, ri, li = g_[i]
+            for j in idx[a_i + 1:]:
+                xj0, yj0, xj1, yj1, rj, lj = g_[j]
+                if li is not None and lj is not None and li != lj:
+                    continue
+                if (min(xi0, xi1) - ri > max(xj0, xj1) + rj or max(xi0, xi1) + ri < min(xj0, xj1) - rj or
+                        min(yi0, yi1) - ri > max(yj0, yj1) + rj or max(yi0, yi1) + ri < min(yj0, yj1) - rj):
+                    continue
+                if seg_dist((xi0, yi0, xi1, yi1), (xj0, yj0, xj1, yj1)) <= max(ri, rj):
+                    parent[find(i)] = find(j)
+    rooted = set()
+    for fp in b.GetFootprints():
+        for pad in fp.Pads():
+            for i in by_net.get(pad.GetNetname(), ()):
+                t = items[i]
+                if t.GetClass() == "PCB_VIA":
+                    if pad.HitTest(t.GetPosition()):
+                        rooted.add(find(i))
+                elif pad.IsOnLayer(t.GetLayer()) and (pad.HitTest(t.GetStart()) or pad.HitTest(t.GetEnd())):
+                    rooted.add(find(i))
+    dead = [t for i, t in enumerate(items) if find(i) not in rooted]
+    for t in dead:
+        b.Delete(t)
+    return len(dead)
+
+
+def prune_dangling_drc(max_iters: int = 80) -> int:
+    """Second tri, au verdict de KiCad : remove_dangling() tient pour raccordé un bout
+    de piste court dont l'extrémité libre tombe dans la largeur du tronçon voisin. Le DRC
+    (track_dangling / via_dangling) ne s'y trompe pas ; on retire ce qu'il désigne,
+    jusqu'à stabilité (une chaîne morte se défait d'un tronçon par passe)."""
+    total = 0
+    for _ in range(max_iters):
+        rep = _drc(BOARD_PATH)
+        bad = {i.get("uuid") for v in rep.get("violations", [])
+               if v.get("type") in ("track_dangling", "via_dangling") for i in v.get("items", [])}
+        if not bad:
+            break
+        b = pcbnew.LoadBoard(str(BOARD_PATH))
+        victims = [t for t in b.GetTracks() if t.m_Uuid.AsString() in bad]
+        if not victims:
+            break
+        for t in victims:
+            b.Delete(t)
+        total += len(victims) + remove_dangling(b)
+        pcbnew.SaveBoard(str(BOARD_PATH), b)
+    return total
 
 
 
@@ -406,99 +596,10 @@ def seg_dist(a, b_):
                pt_seg(bx0, by0, *a), pt_seg(bx1, by1, *a))
 
 
-def check_mains_gap(b) -> int:
-    items = copper_items(b)
-    mains = [i for i in items if i[0] in MAINS_NETS]
-    logic = [i for i in items if i[0] not in MAINS_NETS]
-    worst = []
-    for mn, mx0, my0, mx1, my1, mr in mains:
-        for ln, lx0, ly0, lx1, ly1, lr in logic:
-            # filtre grossier
-            if (min(lx0, lx1) - lr > max(mx0, mx1) + mr + MIN_GAP_MM or
-                    max(lx0, lx1) + lr < min(mx0, mx1) - mr - MIN_GAP_MM or
-                    min(ly0, ly1) - lr > max(my0, my1) + mr + MIN_GAP_MM or
-                    max(ly0, ly1) + lr < min(my0, my1) - mr - MIN_GAP_MM):
-                continue
-            d = seg_dist((mx0, my0, mx1, my1), (lx0, ly0, lx1, ly1)) - mr - lr
-            if d < MIN_GAP_MM:
-                worst.append((round(d, 2), mn, ln,
-                              round((mx0 + mx1) / 2, 1), round((my0 + my1) / 2, 1)))
-    worst.sort()
-    for d, mn, ln, x, y in worst[:20]:
-        print(f"  ECART {d} mm < {MIN_GAP_MM} : {mn} <-> {ln} vers ({x},{y})")
-    return len(worst)
-
-
-def check_mains_plane_gap(b) -> tuple[int, float]:
-    """Distance cuivre secteur <-> bord des plans coulés, COUCHE PAR COUCHE :
-    la ligne de fuite est un chemin en surface, une piste F.Cu et le plan B.Cu
-    sont séparés par l'épaisseur du FR4 (isolant solide). Renvoie
-    (violations, minimum)."""
-    mains = []   # (couche, net, x0, y0, x1, y1, demi-largeur)
-    for t in b.GetTracks():
-        if t.GetNetname() in MAINS_NETS and t.GetClass() == "PCB_TRACK":
-            s, e = t.GetStart(), t.GetEnd()
-            mains.append((t.GetLayer(), t.GetNetname(),
-                          pcbnew.ToMM(s.x), pcbnew.ToMM(s.y),
-                          pcbnew.ToMM(e.x), pcbnew.ToMM(e.y),
-                          pcbnew.ToMM(t.GetWidth()) / 2))
-    for fp in b.GetFootprints():
-        for pad in fp.Pads():
-            if pad.GetNetname() not in MAINS_NETS:
-                continue
-            # contour réel du pad (ovale, rectangle…), pas un cercle majorant
-            for lyr in pad.GetLayerSet().CuStack():
-                outl = pad.GetEffectivePolygon(lyr, pcbnew.ERROR_INSIDE).Outline(0)
-                n = outl.PointCount()
-                for j in range(n):
-                    p0, p1 = outl.CPoint(j), outl.CPoint((j + 1) % n)
-                    mains.append((lyr, pad.GetNetname(), pcbnew.ToMM(p0.x), pcbnew.ToMM(p0.y),
-                                  pcbnew.ToMM(p1.x), pcbnew.ToMM(p1.y), 0.0))
-    planes = []
-    for z in b.Zones():
-        if z.GetIsRuleArea() or not z.GetNetname() or z.GetNetname() in MAINS_NETS:
-            continue
-        for lyr in z.GetLayerSet().CuStack():
-            polys = z.GetFilledPolysList(lyr)
-            for i in range(polys.OutlineCount()):
-                outl = polys.Outline(i)
-                n = outl.PointCount()
-                for j in range(n):
-                    p0, p1 = outl.CPoint(j), outl.CPoint((j + 1) % n)
-                    planes.append((lyr, z.GetNetname(), pcbnew.ToMM(p0.x), pcbnew.ToMM(p0.y),
-                                   pcbnew.ToMM(p1.x), pcbnew.ToMM(p1.y)))
-    m = MIN_PLANE_GAP_MM + max((i[6] for i in mains), default=0)
-    x_lo = min(min(i[2], i[4]) for i in mains) - m
-    x_hi = max(max(i[2], i[4]) for i in mains) + m
-    y_lo = min(min(i[3], i[5]) for i in mains) - m
-    y_hi = max(max(i[3], i[5]) for i in mains) + m
-    planes = [p for p in planes
-              if max(p[2], p[4]) >= x_lo and min(p[2], p[4]) <= x_hi
-              and max(p[3], p[5]) >= y_lo and min(p[3], p[5]) <= y_hi]
-    bad, best = 0, float("inf")
-    for ml, mn, mx0, my0, mx1, my1, mr in mains:
-        for zl, zn, zx0, zy0, zx1, zy1 in planes:
-            if zl != ml:
-                continue
-            if (min(zx0, zx1) > max(mx0, mx1) + mr + MIN_PLANE_GAP_MM or
-                    max(zx0, zx1) < min(mx0, mx1) - mr - MIN_PLANE_GAP_MM or
-                    min(zy0, zy1) > max(my0, my1) + mr + MIN_PLANE_GAP_MM or
-                    max(zy0, zy1) < min(my0, my1) - mr - MIN_PLANE_GAP_MM):
-                continue
-            d = seg_dist((mx0, my0, mx1, my1), (zx0, zy0, zx1, zy1)) - mr
-            best = min(best, d)
-            if d < MIN_PLANE_GAP_MM - 0.01:
-                bad += 1
-                if bad <= 10:
-                    print(f"  PLAN {d:.2f} mm < {MIN_PLANE_GAP_MM} : {mn} <-> plan {zn}"
-                          f" vers ({(mx0 + mx1) / 2:.1f},{(my0 + my1) / 2:.1f})")
-    return bad, best
-
-
 def add_stitching_vias(b):
     """Grille de vias GND : lie les deux plans de masse et résorbe les îlots
     créés par les faisceaux de pistes. Placement seulement là où c'est légal
-    (écart aux autres nets), jamais dans la zone secteur."""
+    (écart aux autres nets)."""
     items = [(n, x0, y0, x1, y1, r) for (n, x0, y0, x1, y1, r)
              in copper_items(b) if n != "GND"]
     # Pads GND exclus ci-dessus (même net) mais leurs PERÇAGES restent
@@ -516,12 +617,13 @@ def add_stitching_vias(b):
         slots_margin.append((sx0 - 1.2, sy0 - 1.2, sx1 + 1.2, sy1 + 1.2))
     spots = [(x, y) for x in range(48, 243, 12) for y in range(90, 172, 10)]
     spots += [(x, y) for x in range(250, 316, 12) for y in range(134, 172, 10)]
-    spots += [(x, y) for x in (252, 264, 276) for y in (88, 96)]
-    # jamais dans les zones antenne (A1 et A2), le coin PSU secteur, ni sous
-    # les modules (rev 0.2.3 — A1 DevKitC 38 : x97,6..127,8 y103,5..160,5 ;
-    # A2 couché : x248,5..319,5 y101,9..131,1)
+    # rev 0.3 : bande de commande (y 86) et coin haut droit, libéré par le bloc secteur
+    spots += [(x, y) for x in range(54, 316, 12) for y in (86,)]
+    spots += [(x, y) for x in (252, 264, 276, 300) for y in (88, 96)]
+    # jamais dans les zones antenne (A1 et A2) ni sous les modules (rev 0.2.3 —
+    # A1 DevKitC 38 : x97,6..127,8 y103,5..160,5 ; A2 couché : x248,5..319,5 y101,9..131,1)
     keepouts = [(95.6, 100.5, 129.8, 161.5), (246.5, 105.5, 265, 127.5),
-                (246, 100.9, 320, 131.6), (245, 40, 318, 102)]
+                (246, 100.9, 320, 131.6)]
     spots = [(x, y) for x, y in spots
              if not any(kx0 <= x <= kx1 and ky0 <= y <= ky1
                         for kx0, ky0, kx1, ky1 in keepouts)]
@@ -594,7 +696,7 @@ def fix_starved_thermals(max_iters=3):
                     xy = (round(pcbnew.ToMM(pos.x), 4), round(pcbnew.ToMM(pos.y), 4))
                     if any(abs(xy[0] - vx) < 0.01 and abs(xy[1] - vy) < 0.01
                            for vx, vy in via_xy):
-                        b.Remove(t)
+                        b.Delete(t)
                         killed += 1
             pcbnew.ZONE_FILLER(b).Fill(b.Zones())
             pcbnew.SaveBoard(str(BOARD_PATH), b)
@@ -620,14 +722,23 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jar", default=str(Path.home() / "freerouting.jar"),
                     help="chemin du jar freerouting")
+    ap.add_argument("--seed", help="carte déjà routée dont le cuivre sert d'amorce "
+                                   "(la carte courante doit sortir de generate.py --regen-pcb)")
+    ap.add_argument("--passes", type=int, default=60, help="passes d'autoroutage (défaut 60)")
     ap.add_argument("--ses", help="réimporter un .ses déjà calculé (freerouting lancé à part, "
                                   "p. ex. plusieurs instances en parallèle, on garde la meilleure) "
                                   "au lieu de relancer le routeur")
-    ap.add_argument("--dsn-only", help="exporter le DSN logique à ce chemin et s'arrêter")
+    ap.add_argument("--dsn-only", help="exporter le DSN à ce chemin et s'arrêter")
     args = ap.parse_args()
     work = Path(tempfile.mkdtemp())
     dsn, ses = work / "logic.dsn", work / "logic.ses"
 
+    # generate.py écrit un fichier au format KiCad 8 avec des commentaires : un passage
+    # par pcbnew le normalise (sinon rename_devkit_alt_pads rend un fichier illisible).
+    b0 = pcbnew.LoadBoard(str(BOARD_PATH))
+    pcbnew.SaveBoard(str(BOARD_PATH), b0)
+    if args.seed:
+        seed_from_board(Path(args.seed))
     apply_seed_tracks()
     b0 = pcbnew.LoadBoard(str(BOARD_PATH))
     n_alt = add_devkit_alt_tracks(b0)
@@ -647,13 +758,22 @@ def main():
     else:
         if not export_logic_dsn(dsn):
             sys.exit("échec export DSN")
-        run_freerouting(Path(args.jar), dsn, ses)
+        run_freerouting(Path(args.jar), dsn, ses, args.passes)
 
     b = pcbnew.LoadBoard(str(BOARD_PATH))
     ok = pcbnew.ImportSpecctraSES(b, str(ses))
-    print("SES importé :", ok, "-", len(b.GetTracks()), "segments logiques")
-    add_mains_tracks(b)
+    print("SES importé :", ok, "-", len(b.GetTracks()), "segments")
     print("ponts DevKit A/A' :", add_devkit_alt_tracks(b))
+    # bouts morts de l'amorce (pistes qui allaient vers une pastille disparue). On
+    # recharge d'abord la carte : après ImportSpecctraSES, l'API renvoie des objets SWIG
+    # non typés (KiCad 10).
+    pcbnew.SaveBoard(str(BOARD_PATH), b)
+    b = pcbnew.LoadBoard(str(BOARD_PATH))
+    n_dead = remove_dangling(b)
+    pcbnew.SaveBoard(str(BOARD_PATH), b)
+    n_dead += prune_dangling_drc()
+    print("bouts de piste sans extrémité raccordée retirés :", n_dead)
+    b = pcbnew.LoadBoard(str(BOARD_PATH))
     pcbnew.ZONE_FILLER(b).Fill(b.Zones())
     pcbnew.SaveBoard(str(BOARD_PATH), b)
 
@@ -668,13 +788,15 @@ def main():
 
     fix_starved_thermals()
 
-    print("--- contrôle indépendant écart secteur/logique ---")
-    b2 = pcbnew.LoadBoard(str(BOARD_PATH))
-    bad = check_mains_gap(b2)
-    print("violations 3 mm :", bad)
-    bad_plane, best = check_mains_plane_gap(b2)
-    print(f"plan GND <-> secteur : min {best:.2f} mm, violations {MIN_PLANE_GAP_MM} mm : {bad_plane}")
-    sys.exit(1 if bad or bad_plane else 0)
+    rep = _drc(BOARD_PATH)
+    errors = [v for v in rep.get("violations", []) if v.get("severity") == "error"]
+    unconnected = rep.get("unconnected_items", [])
+    print(f"--- DRC : {len(errors)} erreur(s), {len(unconnected)} liaison(s) non routée(s) ---")
+    for v in errors[:20]:
+        print("  ", v.get("type"), "-", v.get("description", "")[:100])
+    for v in unconnected[:20]:
+        print("   non routé :", " / ".join(i.get("description", "")[:60] for i in v.get("items", [])))
+    sys.exit(1 if errors or unconnected else 0)
 
 
 if __name__ == "__main__":

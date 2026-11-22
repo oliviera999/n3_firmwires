@@ -71,6 +71,12 @@ composants du catalogue JLCPCB et un fichier de placement.
 
 | | **n3pp + msp commune** | **ffp5cs 12/24 V** | **ffp5cs 230 V** |
 |---|---|---|---|
+> 🆕 **n3-universal rev 0.3.0 (2026-11-22)** — sans 230 V ni relais sur la carte :
+> `gerbers-n3-universal-v0.3.0.zip` — **278 × 91 mm**, **1 oz**, 1,6 mm, **LeadFree HASL**, aucune
+> fente fraisée interne, 6 trous M3 (plus de vis nylon imposée), « Remove Mark ». Check-list :
+> [`n3-universal/COMMANDE.md`](n3-universal/COMMANDE.md). La note suivante décrit la rev 0.2.3
+> (→ remplacée en rev 0.3, zip conservé).
+>
 > 🆕 **n3-universal rev 0.2.3** (site A1 ESP32 DevKitC 38 broches) : `gerbers-n3-universal-v0.2.3.zip` — 278 × 135 mm, **1 oz**
 > (décision du 2026-10-30 : ≤ 1 kW résistif / 3 A moteur par canal, au lieu du 2 oz de la
 > carte 230 V ≤ 10 A ci-dessous), 1,6 mm, **LeadFree HASL**, 19 fentes fraisées, 7 trous M3

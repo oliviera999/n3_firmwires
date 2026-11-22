@@ -8,7 +8,7 @@ Usage :
   kicad-cli sch export netlist --format spice -o out/n3-universal-kicad.spice kicad/n3-universal.kicad_sch
   python3 simulation/bench_kicad_netlist.py [out/n3-universal-kicad.spice]       (code 1 si défaut)
 
-Les connecteurs, relais et modules sont exclus de la simulation (exclude_from_sim) :
+Les connecteurs et modules sont exclus de la simulation (exclude_from_sim) :
 le banc ajoute lui-même 5 V sur VIN_RAW (entrée J1, via Q12) et pilote GATE (GPIO13).
 JP1 est un connecteur -> absent de la netlist = cavalier ÔTÉ (profil msp/n3pp).
 `rshunt` évite les matrices singulières des nets qui ne mènent plus qu'à un bornier.

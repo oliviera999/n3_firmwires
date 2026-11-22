@@ -1,5 +1,9 @@
 # Simplification proposée — n3-universal (vers une rev 0.3)
 
+> **→ Arbitré le 2026-11-19 (§11) et réalisé en rev 0.3.0 le 2026-11-22** : la variante retenue
+> n'est pas celle du §5 (étage à transistor conservé) mais la commande directe de modules actifs
+> à l'état haut. Les §1 à §10 restent tels qu'ils étaient, comme archive de l'étude.
+>
 > **Statut : proposition, en attente d'arbitrage (2026-11-18).** Rien n'est modifié dans le
 > générateur, le PCB routé, les achats ni les firmwares. La rev **0.2.3 reste la seule version
 > commandable** ; elle n'est pas commandée à ce jour. Ce document réunit les conversations du
@@ -185,6 +189,9 @@ charges. Rien ne change donc de ce côté : le circuit 230 V reste à protéger 
 
 ## 7. Essai sur table à faire avant toute décision
 
+> → remplacé en rev 0.3 par la fiche de [`MODULES_RELAIS.md`](MODULES_RELAIS.md) §8 (module actif
+> à l'état haut, sans BC337).
+
 Matériel : un DevKit ESP32, un BC337, une résistance de 1 kΩ (base) et une de 10 kΩ (base → masse),
 un module relais à optocoupleur actif à l'état bas, une alimentation 5 V. Le module est alimenté
 par le même 5 V que le montage.
@@ -212,6 +219,8 @@ Pièces de la carte, d'après `achats/prix.py` du 18/10/2026 : relais SRD-05 18 
 bornier 3 points 3 DH ; Hi-Link 90 DH, porte-fusible 4 DH, varistance 4 DH ; chargeur 5 V 2 A 50 DH.
 
 ## 9. Décisions à prendre
+
+> → toutes arbitrées le 2026-11-19 : voir §11.
 
 | # | Question | Options | Recommandation |
 |---|---|---|---|
@@ -246,3 +255,43 @@ Règle « Propagation des changements » du `CLAUDE.md` racine — tout dans la 
 
 Les sections « Rev x.y » passées du README, `AUDIT-2026-08-28.md` et `EVOLUTIONS_PROPOSEES.md`
 restent telles quelles (archives datées), avec au besoin « → remplacé en rev 0.3 ».
+
+## 11. Arbitrages du 2026-11-19 (et leur réalisation en rev 0.3.0)
+
+Décisions d'Oliv du 2026-11-19, complétées pendant le chantier (2026-11-19 au 2026-11-22).
+Simulations : `simulation/SIMULATION.md` §13. Mode d'emploi : [`MODULES_RELAIS.md`](MODULES_RELAIS.md).
+
+| # | Question | Arbitrage | Réalisation en rev 0.3.0 |
+|---|---|---|---|
+| D1 | Quelle carte commander ? | **rev 0.3** | faite ; la 0.2.3 reste commandable (zip conservé) tant que la 0.3 n'est pas validée par l'essai sur table |
+| D2 | Commande des modules | **étage à transistor retiré** : les modules d'Oliv sont des KY-019 actifs à l'état haut (vérifié par lui), déjà commandés directement par les GPIO sur l'installation ffp3 | GPIO → **Rs 470 Ω** → borne S ; **10 kΩ** vers la masse ; JP5-JP10 directs (+3V3 / masse). Rs tranchée par simulation : 470 Ω sature le transistor du module au pire cas, 1 kΩ non **[simulé]** ; valeur changeable sans toucher au circuit imprimé |
+| D3 | Connecteur de commande | bornier à vis 8 points, puis **révisé le 2026-11-19 : six borniers 3 points S / 5V / GND, un par canal** (choix B d'Oliv) | J39-J44, pas 5,08 mm, en bord haut : trois fils par module, sans répartiteur de 5 V ni de masse |
+| D4 | Diodes de roue libre D1-D4, D6, D7 | **supprimées**, empreintes comprises | fait |
+| D5 | Fabricant | JLCPCB par défaut ; devis PCB Maroc à demander par Oliv | gerbers v0.3.0 sortis, plus aucune fente interne |
+| D6 | Largeur | 278 mm inchangés | fait ; hauteur **91 mm [mesuré sur le contour]** (estimation : 85-90) |
+| D7 | USB du DevKit et alimentation | **D5 = 1N5822 sur toutes les cartes + cavalier 2 points en parallèle** ; remplace la décision A1 du 2026-10-17 (pont de fil) | D5, JP22 (« USB SEUL »), sérigraphie des deux positions |
+
+Compléments décidés pendant le chantier (accord d'Oliv du 2026-11-19, « 2. ok 3. ok 4. ok ») :
+
+- **JP10 sans position ON**, comme JP7 : sur le site S3, K6 est le GPIO45, broche de strapping
+  (tension de la mémoire) qui ne doit pas être tirée vers le haut au démarrage.
+- **C14 = 220 µF sur VIN_5V**, derrière D5 : sans lui, la fermeture de Q7 sur C2 vide fait
+  descendre le 3V3 du DevKit à 2,2-2,7 V sur msp **[simulé]**.
+- **Règle d'alimentation** : source réglée à **5,2 V**, cavalier JP22 ôté. Exception : n3pp sur
+  chargeur 5,0 V, JP22 posé en service, jamais l'USB en même temps.
+
+Écarts par rapport au §5 et au §10 de cette étude :
+
+- L'étage à transistor recommandé au §5 n'existe plus ; l'essai du §7 est remplacé.
+- H5 supprimé, H2 déplacé au coin haut droit, J21 / J22 déplacés en haut à droite.
+- Le modèle SPICE des régulateurs a été corrigé (courant de charge tiré sur l'entrée) : les
+  marges de la chaîne 5 V annoncées avant le 2026-11-19 étaient optimistes de 0,15 à 0,2 V.
+- `route_universal.py` a gagné une étape `--seed` (reprise du cuivre validé de la 0.2.3).
+- C2 = 100 µF sur msp est reporté dans `achats/inventaire.py` ; proposition du 2026-11-18, à
+  confirmer par Oliv.
+- ffp5cs 12 V : trois modules à acheter (pompes, lumière) ; le module du chauffage passe en
+  option, le firmware interdisant le chauffage sur batterie.
+
+Reste à la charge d'Oliv avant de payer : essai sur table d'un module (`MODULES_RELAIS.md` §8),
+JLCDFM sur `gerbers-n3-universal-v0.3.0.zip`, devis PCB Maroc, mesure de la tension en charge du
+bloc 5 V prévu pour ffp5cs.

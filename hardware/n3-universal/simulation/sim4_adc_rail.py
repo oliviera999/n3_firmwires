@@ -1,5 +1,5 @@
 """Sim 4 — mesures : pont VBAT (R38/JP12/R49/C13/D11), ponts écho HC-SR04 (1k/2k), entrées ADC (10k / 1k / 100n).
-Sim 5 — dynamique du rail 5 V : 6 relais + rafales Wi-Fi ESP32 + appel servo, alimentation à impédance non nulle."""
+Sim 5 — dynamique du rail 5 V : 6 modules relais (rev 0.3, alimentés par les borniers J39-J44) + rafales Wi-Fi ESP32 + appel servo, alimentation à impédance non nulle."""
 import json, numpy as np, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -87,8 +87,8 @@ for tag, p in (("5V", dict()), ("5V25", dict(VECHO=5.25)), ("open", dict(RJP="1e
     res[f"echo_{tag}"] = r
 
 # ----------------------------------------------------------------- 5 dynamique du rail 5 V
-NET5 = r"""* Rail 5 V : adaptateur 5 V (Rs 0,25 ohm, câble 1 uH) -> Q12 -> +5V (C1 1000u + C2 470u) ; charges : 6 relais, ESP32 (via D5/AMS1117), servo
-.param BF_BC337=560 VTO_4905=-3 VADAPT=5.0 RS=0.25 LS=1u NREL=6 ISERVO=2.5
+NET5 = r"""* Rail 5 V : adaptateur 5 V (Rs 0,25 ohm, câble 1 uH) -> Q12 -> +5V (C1 1000u + C2 470u) ; charges : 6 modules relais, ESP32 (via D5 1N5822 + C14 220u, AMS1117), servo
+.param BF_BC337=560 VTO_4905=-3 VADAPT=5.0 RS=0.25 LS=1u NREL=6 ISERVO=2.5 RJP22=1e9
 .option savecurrents method=gear gmin=1e-10
 .include models.lib
 Vad vad 0 {VADAPT}
@@ -101,7 +101,8 @@ C1 v5 c1e 1000u
 Resr1 c1e 0 0.08
 C2 v5 c2e 470u
 Resr2 c2e 0 0.12
-* 6 relais enclenchés successivement toutes les 5 ms à partir de 5 ms (bobines 70 ohm + 100 mH, LED 1k)
+* 6 modules relais (KY-019 : Rbm 1k, NPN, bobine 70 ohm + 100 mH, LED 1k) commandes par GPIO -> Rs 470, rappel 10k,
+* enclenches successivement toutes les 5 ms a partir de 5 ms
 .param RC=70 LC=0.1
 Vg1 g1 0 PULSE(0 3.3 5m  20n 20n 1 2)
 Vg2 g2 0 PULSE(0 3.3 10m 20n 20n 1 2)
@@ -110,8 +111,9 @@ Vg4 g4 0 PULSE(0 3.3 20m 20n 20n 1 2)
 Vg5 g5 0 PULSE(0 3.3 25m 20n 20n 1 2)
 Vg6 g6 0 PULSE(0 3.3 30m 20n 20n 1 2)
 .subckt relay gpio vcc gnd
-Rb gpio b 1k
-Rp b gnd 10k
+Rs gpio line 470
+Rp line gnd 10k
+Rbm line b 1k
 Q1 sw b gnd BC337-40
 D1 sw vcc 1N4007
 Rc vcc n1 70
@@ -127,6 +129,10 @@ X5 g5 v5 0 relay
 X6 g6 v5 0 relay
 * ESP32 : 80 mA de fond + rafales Wi-Fi 350 mA (2 ms toutes les 10 ms), derrière D5 + AMS1117
 D5 v5 vin_5v 1N5822
+* cavalier JP22 en parallele de D5 : 1e9 = ote, 0.03 = pose
+Rjp22 v5 vin_5v {RJP22}
+C14 vin_5v c14e 220u
+Resr14 c14e 0 0.15
 XU2 vin_5v v33 0 AMS1117
 Cdk v33 cdke 22u
 Resrdk cdke 0 0.3
@@ -159,10 +165,10 @@ for i, (tag, p, lab) in enumerate((("5V_rs025", dict(), "adaptateur 5,0 V, 0,25 
     axs[1].plot(t, tr[:, 3], color=C[i], lw=1.3, label=lab)
     res[f"rail5_{tag}"] = {k: meas(out, k) for k in ("v5_min_relays", "v5_min_servo", "v33_min_servo", "v33_min_relays", "iad_max")}
 axs[0].axhline(4.5, color=STATUS["warning"], ls="--", lw=1); axs[0].text(0.5, 4.52, "4,5 V : minimum HC-SR04", fontsize=7.5, color=INK2)
-style(axs[0], "Rail +5V : 6 relais enclenchés de 5 à 30 ms, rafales Wi-Fi toutes les 10 ms, servo 2,5 A de 40 à 100 ms", None, "V")
+style(axs[0], "Rail +5V : 6 modules relais enclenchés de 5 à 30 ms, rafales Wi-Fi toutes les 10 ms, servo 2,5 A de 40 à 100 ms", None, "V")
 axs[0].legend(frameon=False, fontsize=7.5, loc="lower left", ncol=1)
 axs[1].axhline(3.2, color=STATUS["warning"], ls="--", lw=1); axs[1].text(0.5, 3.21, "3,2 V", fontsize=7.5, color=INK2)
-style(axs[1], "3V3 du DevKit (derrière D5 1N5822 + AMS1117)", "ms", "V")
+style(axs[1], "3V3 du DevKit (derrière D5 1N5822 + C14 220 µF + AMS1117)", "ms", "V")
 axs[1].set_ylim(2.6, 3.4)
 fig.savefig(OUT / "s5_rail5_dynamics.png", dpi=150)
 plt.close(fig)

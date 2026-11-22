@@ -1,5 +1,5 @@
 """Sim 5 — appel de courant servo sur le rail 5 V, par type de servo et par source.
-Reprend la netlist du rail 5 V de sim4 (6 relais collés, Wi-Fi actif, capteurs) et balaie
+Reprend la netlist du rail 5 V de sim4 (6 modules relais collés, Wi-Fi actif, capteurs) et balaie
 le courant de blocage : SG90 ~0,65 A, MG90S ~1 A (ou 2 SG90 ensemble), 1,5 A, MG996R ~2,5 A.
 Sortie : out/s5_servo_results.json + tableau console (minimum de +5V et du 3V3 du DevKit)."""
 import re, json
@@ -7,9 +7,13 @@ from spicelib import run, meas, OUT
 
 SRC = (OUT.parent / "sim4_adc_rail.py").read_text(encoding="utf-8")
 NET5 = re.search(r'NET5 = r"""(.*?)"""', SRC, re.S).group(1)
-SOURCES = (("bloc 5 V correct (5,0 V, 0,25 Ω)", dict()),
-           ("bloc faible (4,8 V, 0,5 Ω)", dict(VADAPT=4.8, RS=0.5)),
-           ("Hi-Link / buck 5 A (5,1 V, 0,1 Ω)", dict(VADAPT=5.1, RS=0.1)))
+# Rev 0.3 : JP22 ôté = D5 1N5822 en série vers le DevKit ; JP22 posé = D5 court-circuitée (RJP22).
+SOURCES = (("bloc 5,0 V 0,25 Ω, JP22 ôté", dict()),
+           ("bloc 5,0 V 0,25 Ω, JP22 posé", dict(RJP22=0.03)),
+           ("bloc 5,0 V 0,1 Ω, JP22 posé", dict(RS=0.1, RJP22=0.03)),
+           ("bloc faible 4,8 V 0,5 Ω, JP22 posé", dict(VADAPT=4.8, RS=0.5, RJP22=0.03)),
+           ("bloc / buck 5,2 V 0,1 Ω, JP22 ôté", dict(VADAPT=5.2, RS=0.1)),
+           ("bloc / buck 5,2 V 0,25 Ω, JP22 ôté", dict(VADAPT=5.2, RS=0.25)))
 SERVOS = ((0.65, "SG90 bloqué"), (1.0, "MG90S bloqué / 2 x SG90"), (1.5, "1,5 A"), (2.5, "MG996R bloqué"))
 # Variante « même bloc, câble servo séparé » (câblage en étoile) : résistance interne du bloc
 # RINT, puis deux câbles RCAB — l'un vers la carte (Q12, rail +5V), l'autre direct vers le servo.
@@ -19,17 +23,17 @@ NET_STAR = (NET5.replace("Rs vad vad2 {RS}\nLs vad2 vin_raw {LS}",
             .replace("Iservo v5 0 PULSE", "Iservo vservo 0 PULSE")
             .replace("RS=0.25 LS=1u", "RS=0.25 RINT=0.1 RCAB=0.15 LS=1u"))
 res = {}
-print(f"{'source':<36} {'servo':<26} {'+5V min':>8} {'3V3 min':>8}")
+print(f"{'source':<46} {'servo':<26} {'+5V min':>8} {'3V3 min':>8}")
 for lab, p in SOURCES:
     for i, name in SERVOS:
         out, _ = run(NET5, "s5_servo", dict(ISERVO=i, **p), timeout=300)
         v5, v33 = meas(out, "v5_min_servo"), meas(out, "v33_min_servo")
         res[f"{lab} | {i} A"] = dict(source=lab, i_servo=i, servo=name, v5_min=v5, v33_min=v33, ok=v33 >= 3.1)
-        print(f"{lab:<36} {name:<26} {v5:>8.2f} {v33:>8.2f} {'OK' if v33 >= 3.1 else 'brownout'}")
-lab = "même bloc 5 V (0,1 Ω), câble servo séparé"
+        print(f"{lab:<46} {name:<26} {v5:>8.2f} {v33:>8.2f} {'OK' if v33 >= 3.1 else 'brownout'}")
+lab = "bloc 5,0 V 0,1 Ω, JP22 ôté, câble servo séparé"
 for i, name in SERVOS:
     out, _ = run(NET_STAR, "s5_servo", dict(ISERVO=i), timeout=300)
     v5, v33 = meas(out, "v5_min_servo"), meas(out, "v33_min_servo")
     res[f"{lab} | {i} A"] = dict(source=lab, i_servo=i, servo=name, v5_min=v5, v33_min=v33, ok=v33 >= 3.1)
-    print(f"{lab:<36} {name:<26} {v5:>8.2f} {v33:>8.2f} {'OK' if v33 >= 3.1 else 'brownout'}")
+    print(f"{lab:<46} {name:<26} {v5:>8.2f} {v33:>8.2f} {'OK' if v33 >= 3.1 else 'brownout'}")
 (OUT / "s5_servo_results.json").write_text(json.dumps(res, indent=1, ensure_ascii=False))

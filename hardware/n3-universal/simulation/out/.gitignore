@@ -1,7 +1,8 @@
 # traces wrdata et netlists de balayage (régénérées par sim*.py)
 *__*.txt
-s1_mc*.cir
-s1_L*.cir
+s1_sweep.cir
+s1_glitch.cir
+s7_*.cir
 s2_*vto[24].cir
 s3_q1[12]_vto[24].cir
 s4_echo_5V25.cir

@@ -1,16 +1,18 @@
-* Sim 6 : fermeture de Q7 sur C2 decharge (rev 0.2.2+) - msp1 : boost 5 V limite a 1 A
+* Sim 6 : fermeture de Q7 sur C2 decharge (rev 0.2.2+) - msp1 : boost 5,2 V limite a 1 A
 .param BF_BC337=560 VTO_4905=-3
 .option method=gear gmin=1e-10 reltol=2e-3
 .include models.lib
-Vad vad 0 PWL(0 0 1m 5)
+Vad vad 0 PWL(0 0 1m 5.2)
 Bsrc vad vin_raw I = min(1.0, max(0,(V(vad)-V(vin_raw))/0.1))
 Cbo vin_raw 0 22u
 M12 vin_raw q12g v5 IRF4905
 R57 q12g 0 100k
 C1 v5 c1e 1000u
 Resr1 c1e 0 0.08
-* DevKit : D5 = pont de fil, AMS1117, 22 uF, ESP32 eveille sans radio (80 mA)
-Rd5 v5 vin5 0.02
+* DevKit : D5 = 1N5822, C14 220 uF, AMS1117, 22 uF, ESP32 eveille sans radio (80 mA)
+D5 v5 vin5 1N5822
+C14 vin5 c14e 220u
+Resr14 c14e 0 0.15
 XU2 vin5 v33 0 AMS1117
 Cdk v33 cdke 22u
 Resrdk cdke 0 0.3

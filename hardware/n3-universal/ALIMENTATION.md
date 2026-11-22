@@ -10,8 +10,8 @@ mesurer sur la première carte montée (banc INA226 du firmware `energie/`).
 |---|---|---|---|
 | **msp1** (météo + tracker) | 18650 Li-ion 1S, chargeur solaire (TP4056), boost 5 V sur J1/J2 | deep sleep 300 s, réveils ~15 s | **la fuite en sommeil** |
 | **n3pp** (serre) | chargeur 5 V de bonne qualité sur J1/J2 | deep sleep 300 s | marge de tension (chaîne 5 V → DevKit) |
-| **ffp5cs** (aquaponie) | secteur 230 V, Hi-Link 20M05 embarqué | pas de veille profonde : light sleep de 33 min le jour, 100 min la nuit, relais coupés pendant la veille (§9.5) | sécurité secteur, ce qui reste alimenté en veille |
-| **ffp5cs 12 V** | batterie AGM 12 V, régulateur PWM solaire, buck 5 V sur J36/J37 → J1 | jamais | **bobines de relais**, délestage, transitoires du bus |
+| **ffp5cs** (aquaponie) | installation 230 V : **bloc 5 V externe ≥ 2 A** sur J2/J1 et modules relais (rev 0.3 ; Hi-Link embarqué jusqu'à la 0.2.3) | pas de veille profonde : light sleep de 33 min le jour, 100 min la nuit, relais coupés pendant la veille (§9.5) | sécurité secteur, ce qui reste alimenté en veille |
+| **ffp5cs 12 V** | batterie AGM 12 V, régulateur PWM solaire, buck 5 V (réglé 5,2 V en rev 0.3) sur J36/J37 → J1 | jamais | **bobines de relais** (modules externes en rev 0.3), délestage, transitoires du bus |
 
 ## 1. Le principe : fuite et robinet
 
@@ -49,7 +49,7 @@ ne prévoit pas (voir §7, arbitrage N2).
 
 ## 3. msp1 — 18650 + solaire
 
-**Chaîne** : panneau 6 V → TP4056 → 18650 (3,0–4,2 V) → boost 5 V (module, réglé **5,1 V**) →
+**Chaîne** : panneau 6 V → TP4056 → 18650 (3,0–4,2 V) → boost 5 V (module, réglé **5,1 V** ; **5,2 V en rev 0.3**, D5 revenue — §10) →
 J1/J2 → Q12 → +5V → D5 → DevKit (AMS1117 → 3,3 V) ; +5V → Q7 → U1 → +3V3_SW (capteurs,
 coupé en sommeil par GPIO13, JP1 ôté) ; JP12 en 2-3 (pont 100k/100k, 4,2 V → 2,10 V).
 
@@ -90,58 +90,69 @@ chaque seconde de réveil en moins vaut ~0,06 Wh/jour).
 
 ## 4. n3pp — chargeur 5 V
 
-**Chaîne** : chargeur USB-A ou bloc 5 V → **câble vers J1/J2** (jack 5,5/2,1 ou bornier) → Q12
-→ +5V → relais (pompe, lumière, chauffage…), D5 → DevKit ; +3V3_SW commuté (JP1 ôté). Deep
-sleep 300 s comme msp.
+*Section mise à jour pour la rev 0.3 (2026-11-22). Chiffres [simulé] : `simulation/SIMULATION.md` §13.*
+
+**Chaîne** : chargeur USB-A ou bloc 5 V → **câble vers J2** (jack 5,5/2,1, + au centre) ou J1
+(bornier) → Q12 → +5V → bornier J39 (5 V du module relais de la pompe), **D5 ou JP22** → DevKit ;
++3V3_SW commuté (JP1 ôté). Deep sleep 300 s comme msp.
 
 **Points durs** :
-- **Ne pas alimenter l'unité par le micro-USB du DevKit** : depuis la 0.2.2 (D5 = pont de fil),
-  le 5 V USB atteint le rail de la carte, mais à travers la diode du DevKit : ni la tension ni
-  le courant ne suffisent pour les relais pendant le Wi-Fi (§10). L'entrée, c'est J1/J2.
-  (Corrigé le 2026-11-18 : ce point décrivait la rev 0.2.1, où D5 bloquait le 5 V USB.)
-- Un chargeur de téléphone « 5 V 2 A » **de qualité** fournit 5,0–5,2 V ; le câble compte autant
-  que lui : 1 m de câble USB fin fait 0,3–0,5 Ω et perd 0,3 V sous 1 A. Prendre un cordon
-  USB-A → jack 5,5/2,1 court et épais (≥ 0,5 mm²) ou un bloc à cordon fixe. Seuil : **≥ 4,8 V
-  sur J1/J2 sous charge** ; en dessous, redémarrages pendant le Wi-Fi (`SIMULATION.md` §6).
-- Relais : 72 mA par bobine collée ; une pompe maintenue = 0,36 W = 8,6 Wh/jour, sans effet sur
-  un chargeur, à connaître pour le dimensionner (6 relais + Wi-Fi ≈ 1 A crête : un chargeur 2 A
-  suffit, 1 A non).
-- Charges DC inductives sur les contacts (pompe, électrovanne 12/24 V) : **diode de roue libre
-  aux bornes de la charge** (extérieure à la carte), sinon arc et usure des contacts. Charges
-  230 V : contacts 7 A résistifs / 3 A inductifs réels (SRD Form C).
-- Sobriété : même fuite que msp1 (DevKit + LED5 + servos s'il y en a) — sans importance sur
-  chargeur, mais LED5 peut rester non posée par cohérence.
+- **Cavalier JP22 posé sur cette unité.** Un chargeur de téléphone sort 5,0 V : avec la diode D5
+  en série, la marge du régulateur du DevKit est de −0,15 V au pire cas et −0,01 V en typique
+  [simulé] ; cavalier posé, +0,32 V. Contrepartie : **jamais l'USB du DevKit en même temps que le
+  chargeur** (flasher chargeur débranché, ou en OTA). Avec une source réglable à 5,2 V, JP22
+  s'ôte et l'USB redevient permis (+0,07 V au pire, +0,20 V en typique [simulé]).
+- **Ne pas alimenter l'unité par le micro-USB du DevKit** : c'est le mode « USB seul » du §10,
+  réservé à l'établi (4,4 V sur le rail pendant le Wi-Fi [simulé]).
+- Un chargeur « 5 V 2 A » **de qualité** fournit 5,0–5,2 V ; le câble compte autant que lui :
+  1 m de câble USB fin fait 0,3–0,5 Ω et perd 0,3 V sous 1 A. Prendre un cordon USB-A → jack
+  5,5/2,1 court et épais (≥ 0,5 mm²) ou un bloc à cordon fixe. Seuil : **≥ 4,8 V sur J1/J2 sous
+  charge** avec JP22 posé (le DevKit tient jusqu'à ~4,6 V de source en typique [simulé] ; garder
+  0,2 V de réserve) ; **≥ 5,05 V** de source avec JP22 ôté [simulé, pire cas].
+- Module relais : 75 mA collé [estimé] ; une pompe maintenue = 0,38 W = 9 Wh/jour, sans effet sur
+  un chargeur.
+- Charges DC inductives sur les contacts du module (pompe, électrovanne 12/24 V) : **diode de
+  roue libre aux bornes de la charge**. Charges 230 V : uniquement sur le module, dans un
+  coffret isolant (`MODULES_RELAIS.md` §6).
+- Sobriété : même fuite que msp1 (DevKit + LED5) — sans importance sur chargeur, mais LED5 peut
+  rester non posée par cohérence.
 - **Mesure « batterie » sans batterie** : le firmware n3pp lit `pontdiv` (ADC_VBAT) et part en
   veille d'urgence sous `SeuilPontDiv`. Sur chargeur, J25 ne reçoit rien → lecture ≈ 0 → veille
   d'urgence. Relier **J25-1 au +5V (J18-1)** par un fil (5 V → 2,5 V sur l'ADC avec JP12 en 2-3),
   ou désactiver la veille infinie côté serveur (clé 112). À vérifier au premier allumage.
 
-## 5. ffp5cs — secteur 230 V (Hi-Link)
+## 5. ffp5cs — installation 230 V : bloc 5 V externe et modules relais (rev 0.3)
 
-**Chaîne** : 230 V → F1 T1A + RV1 → PS1 HLK-20M05 (5 V / 3,6 A) → +5V directement (pas de Q12
-sur ce chemin) ; JP1 fermé (rail capteurs permanent) ; relais, HC-SR04, servos (nourrisseurs),
-SD, OLED, INA… jamais de sommeil profond (light sleep + modem sleep).
+*Jusqu'à la rev 0.2.3 : Hi-Link HLK-20M05, fusible et varistance sur la carte (→ remplacé en
+rev 0.3 ; le zip 0.2.3 reste dans `exports/`).*
 
-- **Sécurité** : fusible et varistance embarqués, zone secteur isolée (fentes, 3 mm, ligne de
-  fuite 6,4 mm vérifiée par DRC), cuivre 1 oz (≤ 1 kW résistif / 3 A moteur par canal), H1/H5 en vis nylon. Boîtier + presse-étoupes
-  obligatoires ; pas de terre (classe II) — le boîtier doit l'être aussi.
-- **Budget** : Hi-Link 20 W pour ~0,5 A continu (ESP 0,2 + capteurs 0,15 + 2 relais 0,15) et
-  des pointes à ~1,5 A (6 relais + Wi-Fi + HC-SR04 + servos) : marge ×2. Les relais collés en
-  permanence (pompe) consomment 0,36 W chacun, 24 h/24 — c'est le secteur qui paie.
-- **Robustesse** : D12 (TVS 6,8 V) protège le rail des surtensions du module ; le Hi-Link
-  n'aime pas les micro-coupures répétées (redémarrages) — un condensateur C1 1000 µF tient
-  ~50 ms. Si le réseau est mauvais, un onduleur en amont, pas une modification de carte.
-- Sobriété : non critique. Le seul levier serait des relais bistables (0 W maintenus) — hors
-  périmètre de cette carte.
-- **À l'étude (2026-11-18)** : sortir le Hi-Link de la carte et alimenter ce profil comme n3pp,
-  par un bloc 5 V ≥ 2 A (mieux 3 A) sur J2 — la carte le permet déjà, PS1/F1/RV1/J27 non posés.
-  Voir [`SIMPLIFICATION_PROPOSEE.md`](SIMPLIFICATION_PROPOSEE.md) ; rien n'est décidé ici.
+**Chaîne** : bloc 5 V **≥ 2 A, mieux 3 A** → J2 (jack) ou J1 (bornier) → Q12 → +5V → borniers
+J39-J44 (5 V des modules relais), D5 → DevKit ; JP1 fermé (rail capteurs permanent) ; HC-SR04,
+servos (nourrisseurs), SD, OLED, INA… jamais de sommeil profond (light sleep + modem sleep).
+
+- **Sécurité** : plus aucun 230 V sur la carte. Il ne passe que par les contacts des modules
+  relais, dans un coffret isolant fermé, avec **protection en amont** (fusible ou disjoncteur,
+  différentiel 30 mA) : la carte ne protège aucune charge (`MODULES_RELAIS.md` §6).
+- **Tension du bloc** : c'est le profil le plus chargé. Avec 6 modules alimentés par la carte, la
+  marge du régulateur du DevKit est de −0,21 V au pire cas à 5,0 V et **+0,02 V à 5,2 V**
+  [simulé]. Règle : **bloc donnant 5,2 V en charge, JP22 ôté**. Si le bloc ne dépasse pas
+  5,0 V : **JP22 posé** (+0,29 V), et alors jamais d'USB en même temps que le bloc.
+- **Servo qui force** (nourrisseur bloqué, 0,65 A) : 3V3 du DevKit à 2,85 V avec un bloc à 5,0 V
+  et JP22 ôté ; 3,12 V à 5,2 V ; 3,26 V JP22 posé [simulé]. Câble court et épais (≤ 0,15 Ω).
+- **Budget** : ~0,5 A continu (ESP 0,2 + capteurs 0,15 + 2 modules 0,15) et des pointes à
+  ~1,5 A (6 modules + Wi-Fi + HC-SR04 + servos) [estimé] : un bloc 2 A est le minimum, 3 A
+  donne de la marge.
+- **Robustesse** : D12 (TVS 6,8 V) écrête les surtensions brèves du bloc ; **elle ne protège pas
+  d'un bloc 12 V branché par erreur** sur le jack (sérigraphie « PAS DE 12V »). C1 1000 µF tient
+  ~50 ms de micro-coupure.
+- Variante : alimenter les modules directement depuis le bloc (seuls S et GND vont à la carte) :
+  +0,10 à +0,15 V de marge [simulé].
 
 ## 6. ffp5cs 12 V — batterie AGM, régulateur PWM, buck
 
 **Chaîne** : panneau → régulateur PWM → **batterie AGM** (10,5–15,5 V) → fusible lame → J26 →
 Q11 (anti-inversion) + D9 + D8 (TVS 18 V) → J36/J37 → **buck 5 V** (MP1584 conseillé, réglé
-5,1 V) → J1 → Q12 → +5V. Pompes 12 V commutées par les **contacts** des relais, directement sur
+5,1 V ; **5,2 V en rev 0.3**) → J1 → Q12 → +5V. Pompes 12 V commutées par les **contacts** des relais (modules externes en rev 0.3), directement sur
 le bus. INA226 ×3, JP12 en 1-2 (100k/18k depuis la 0.2.2).
 
 - **Où brancher la carte sur le régulateur PWM** : sur les bornes **batterie** (via le fusible),
@@ -196,7 +207,7 @@ Ce qui est **déjà juste** en 0.2.1 : Q7 corrigé (rail capteurs réellement co
 | N1 | **Oui** : servos coupés en sommeil | **J15/J16 pin 2 et C2 passent sur `LDO_IN`**, le 5 V déjà commuté par Q7 : les servos suivent le rail capteurs (JP1 ôté = coupés en deep sleep, JP1 fermé = permanents sur ffp5cs). Aucun composant ajouté : une première version avec un second P-FET (Q13) + cavalier bouchait le couloir de pistes du bas de carte (7 nets non routés). SPICE : un SG90 bloqué (0,65 A) à travers Q7 fait tomber LDO_IN à 4,96 V (4,91 V avec un Q7 défavorable), 4,60 V pour un MG996R : +3V3_SW reste à 3,30 V dans tous les cas (U1 n'a besoin que de 4,3 V). Carte reroutée (générateur → freerouting → contrôles). Câblage en étoile / gros servo : fil +5V du servo directement sur la source, J15/J16 pin 2 vide |
 | N2 | **Non** (LDO faible Iq pour le DevKit) | essai possible plus tard par module HT7833 externe sur J17-1, sans toucher à la carte |
 | N3 | **LED5 non posée** sur msp/n3pp | BOM (étoilée), posée sur ffp5cs |
-| A1 | **D5 court-circuitée** (pont de fil) — il n'y aura jamais USB + alimentation en même temps | +0,35 V de marge au DevKit ; **règle absolue : ne jamais brancher l'USB du DevKit carte sous tension** (flasher hors tension, ou OTA) ; l'empreinte DO-201 reste pour reposer une 1N5822 si ce besoin revient |
+| A1 | **D5 court-circuitée** (pont de fil) — il n'y aura jamais USB + alimentation en même temps (**→ remplacé en rev 0.3** : D5 = 1N5822 partout + cavalier JP22, §10) | +0,35 V de marge au DevKit ; **règle absolue : ne jamais brancher l'USB du DevKit carte sous tension** (flasher hors tension, ou OTA) ; l'empreinte DO-201 reste pour reposer une 1N5822 si ce besoin revient |
 | A3 | **R39 = 18k** | BOM ; aucun firmware ne lit ADC_VBAT sur le profil 12 V aujourd'hui (la batterie est mesurée par INA226 / `n3_power`) — si un jour c'est le cas, ratio 118/18 |
 | N5 | **TP4056 conservé** (déjà en stock) | seuil de veille d'urgence firmware ≥ 3,3 V ; cellule à l'ombre ; panneau 5–6 W |
 | N4 | **Relais conservés** | cycles de pompe et interdiction du chauffage sur batterie côté firmware |
@@ -284,7 +295,7 @@ Sur chargeur, l'énergie n'est pas un enjeu : ce qui compte est la tenue du 5 V 
 sur l'ancienne carte : `etatPompe` vaut 1 sur 99,5 % des mesures de juin-juillet. Si c'est bien
 l'état de la bobine, un relais y restait collé en permanence (0,39 W).
 
-### 9.5 ffp5cs — secteur (Hi-Link)
+### 9.5 ffp5cs — secteur (Hi-Link) (→ rev 0.3 : bloc 5 V externe, même bilan côté 5 V)
 
 ffp5cs alterne des éveils d'environ 7 minutes et des veilles légères (light sleep) de 33 minutes
 le jour, 100 minutes la nuit. Les relais sont coupés pendant la veille ; le rail capteurs et les
@@ -380,102 +391,116 @@ bouge seul à la remise sous tension ; poser C2 en 100 µF sur cette unité (`SI
 | Ultrasons coupés aussi | 15 mA | ~6 Wh |
 | LED5 non posée en plus | 12 mA | ~5,5 Wh |
 
-## 10. Alimentation par l'USB du DevKit (2026-11-18, rev 0.2.3)
+## 10. Alimentation par l'USB du DevKit (rev 0.3 : D5 = 1N5822 et cavalier JP22)
 
-Question du 2026-11-18 : peut-on alimenter la carte par l'USB du DevKit, par l'alimentation
-normale, ou par les deux à la fois (l'USB pour l'ESP, l'alimentation pour le reste) ? **Rien
-n'est décidé ni modifié sur la carte** : cette section décrit ce que fait la rev 0.2.3 dans
-chaque cas. Les courants viennent du §9.2 (estimés) ; ce qui est déduit sans mesure ni
-simulation est listé au §10.6.
+*Section réécrite le 2026-11-22. Elle décrivait la rev 0.2.3, où D5 était un pont de fil et la
+règle « jamais d'USB carte sous tension » sans exception (→ remplacé en rev 0.3). Chiffres
+[simulé] : `simulation/sim7_d7_supply.py`, `SIMULATION.md` §13.2. Rien n'est mesuré.*
 
 ### 10.1 Ce que dit le schéma
 
 Lu dans `generator/generate.py` et `kicad/n3-universal.kicad_sch` :
 
-- **D5 est un pont de fil** (valeur `FIL`, décision A1 du §8) entre `VIN_5V`, la broche 5 V du
-  DevKit, et le rail `+5V`. La carte n'a plus d'anti-retour entre le DevKit et son rail.
+- **D5 est une 1N5822** (Schottky 3 A), anode sur le rail `+5V`, cathode sur `VIN_5V`, la broche
+  5 V du DevKit. Posée sur **toutes** les cartes. Elle empêche le 5 V de l'USB de remonter vers
+  le rail de la carte et vers sa source.
+- **JP22** (2 broches, repère « USB SEUL ») est en parallèle de D5. Posé, il la court-circuite :
+  la carte se comporte comme la rev 0.2.3.
+- **C14** (220 µF) est sur `VIN_5V`, derrière la diode : réservoir du DevKit.
 - **Q12** : grille à la masse par R57 (100k), drain sur `VIN_RAW` (J1, J2, J37), source sur `+5V`.
-- **PS1** (Hi-Link) sort directement sur `+5V`, sans passer par Q12.
-- **`+3V3_SW`**, le 3,3 V des capteurs, sort de U1 (LD1117V33), lui-même alimenté par `LDO_IN` :
-  le `+5V` à travers Q7, ou à travers JP1. Il ne vient pas du 3,3 V du DevKit.
-- Le 3,3 V du DevKit (`+3V3`) n'alimente aucun capteur : il va au header J17, aux cavaliers de
-  forçage des relais et à la diode D11.
-- C1 (1000 µF) est sur `+5V`.
+- **`+3V3_SW`**, le 3,3 V des capteurs, sort de U1 (LD1117V33), alimenté par `LDO_IN` : le `+5V`
+  à travers Q7, ou à travers JP1. Il ne vient pas du 3,3 V du DevKit.
+- Le 3,3 V du DevKit (`+3V3`) va au header J17, à la broche ON des cavaliers JP5, JP6, JP8, JP9
+  et à la diode D11.
+- C1 (1000 µF) est sur `+5V`. Les modules relais prennent leur 5 V sur `+5V` (borniers J39-J44).
 
-### 10.2 Les trois cas
+### 10.2 Les cas
 
-| | D5 = pont de fil (rev 0.2.2 et suivantes) | D5 = 1N5822 (carte d'établi, proposition en attente) |
-|---|---|---|
-| Alimentation normale seule | fonctionnement prévu | fonctionnement prévu, avec 0,35 V de marge en moins : source à 5,1 V ferme |
-| USB seul | **toute la carte est alimentée**, à travers la diode du DevKit, à ~4,6 V | le DevKit seul ; relais, U1 et capteurs restent éteints |
-| USB et alimentation ensemble | **interdit** (règle du §8) | sans danger : chaque source est derrière sa diode |
+| JP22 | Source de la carte | USB | Ce qui se passe |
+|---|---|---|---|
+| **ôté** | présente | débranché | fonctionnement prévu ; la diode prend 0,3 à 0,45 V : **source à 5,2 V** |
+| **ôté** | présente | branché | **sans danger** : le DevKit tire sur celle des deux sources qui lui présente la tension la plus haute (119 mA sur l'USB et 573 mA sur une source à 5,1 V [simulé]) ; rien ne remonte vers la source |
+| **ôté** | absente | branché | le DevKit seul vit ; modules relais, U1 et capteurs restent éteints (rail à 0 V) |
+| **posé** | présente | débranché | comme la 0.2.3 : +0,3 à +0,5 V de marge ; convient à une source à 5,0 V |
+| **posé** | absente | branché | **« USB seul »** : toute la carte est alimentée par l'USB, à travers la diode du DevKit |
+| **posé** | présente | branché | **interdit** |
 
-- « L'USB pour l'ESP, l'alimentation pour le reste » correspond à la colonne 1N5822. Le partage
-  n'est pas strict : le DevKit tire sur celle des deux sources qui lui présente la tension la
-  plus haute, diodes déduites. Le reste de la carte ne tire que sur l'alimentation.
-- **Aucun cavalier à ajouter** : l'empreinte D5 (DO-201) fait déjà ce choix, carte par carte.
+Règle retenue le 2026-11-19 : **source à 5,2 V, JP22 ôté**. n3pp sur chargeur 5,0 V : JP22 posé
+en service, jamais d'USB en même temps.
 
-### 10.3 USB seul avec le pont de fil : ce qui tient
+### 10.3 Marge du régulateur du DevKit selon la source
 
-Chemin : prise USB → diode série du DevKit → broche 5 V → D5 (fil) → `+5V`. Le rail est à ~4,6 V
-(5,0 V moins ~0,4 V de diode). C'est assez pour U1, qui demande 4,3 V (§8, N1), mais avec 0,3 V
-de marge seulement : un câble USB fin la consomme. Deux limites de courant : la source (port de
-PC : 0,5 A en USB 2.0, 0,9 A en USB 3 ; chargeur : selon le modèle) et la diode du DevKit
-(souvent 1 A, variable selon les clones).
+Marge = `VIN_5V` − 4,49 V sous 0,45 A (pointe Wi-Fi). Pire cas : courbe maximale de la diode,
+Q12 défavorable. Tableau complet : `SIMULATION.md` §13.2.
 
-| Charge | Moyenne ~ | Pointes ~ | Port de PC (0,5 A) | Chargeur ≥ 1 A |
-|---|---|---|---|---|
-| DevKit en Wi-Fi + rail capteurs | 165 mA | 490 mA | oui | oui |
-| + 2 relais collés | 320 mA | 650 mA | non | oui |
-| + 6 relais collés | 630 mA | 950 mA | non | non (diode du DevKit) |
-| un SG90 qui force | + 650 mA | | non | non |
+| Profil | Source | JP22 ôté, pire / typique | JP22 posé, typique |
+|---|---|---|---|
+| msp1 | boost 5,1 V | +0,07 / +0,20 V | +0,52 V |
+| msp1 | **boost 5,2 V** | **+0,18** / +0,30 V | +0,62 V |
+| n3pp | chargeur 5,0 V | −0,15 / −0,01 V | **+0,32 V** |
+| ffp5cs, 6 modules | bloc 5,0 V | −0,21 / −0,03 V | +0,29 V |
+| ffp5cs, 6 modules | **bloc 5,2 V** | **+0,02** / +0,17 V | +0,50 V |
+| ffp5cs 12 V | buck 5,1 V | −0,04 / +0,12 V | +0,44 V |
 
-Précautions :
+Une marge négative fait descendre le 3V3 du DevKit d'autant pendant les pointes Wi-Fi ; elle ne
+coupe rien à elle seule. Le seuil de brownout par défaut de l'ESP32 est vers 2,4 V [à vérifier
+sur la configuration des firmwares].
 
-1. **Usage d'établi seulement** : essais sur table, capteurs, un ou deux relais. Une unité
-   installée s'alimente par J1/J2, J37 ou le secteur (§3 à §6).
-2. **Débrancher d'abord l'alimentation normale.** Le 5 V USB remonte vers `VIN_RAW` : Q12 conduit
+### 10.4 USB seul (JP22 posé, source débranchée) : ce qui tient
+
+Chemin : prise USB → diode série du DevKit → broche 5 V → JP22 → `+5V`. [simulé], USB à 5,0 V et
+câble de 0,3 Ω :
+
+| Charge | Rail +5V | 3V3 du DevKit | Courant USB |
+|---|---|---|---|
+| DevKit au repos + rail capteurs | 4,58 V | 3,30 V | 170 mA |
+| DevKit en Wi-Fi | 4,43 V | 3,23 V | 495 mA |
+| + 1 module relais collé | 4,40 V | 3,20 V | 569 mA |
+| + 2 modules collés | 4,37 V | 3,18 V | 643 mA |
+
+Avec un câble de 0,6 Ω ou un port à 4,75 V, U1 (3,3 V capteurs) ne régule plus. Précautions :
+
+1. **Usage d'établi seulement** : capteurs, un ou deux modules relais, pas de servo.
+2. **Débrancher d'abord la source de la carte.** Le 5 V USB remonte vers `VIN_RAW` : Q12 conduit
    dans les deux sens dès que sa grille est à la masse. Il atteint donc ce qui est branché sur
-   J1, J2 ou J37 (sortie du boost, du buck, du chargeur) et, sur ffp5cs secteur, la sortie du
-   Hi-Link. Débrancher le bornier de la source ; pour le Hi-Link, soudé, retirer la prise secteur.
-3. **Premier branchement sur un chargeur ou un hub alimenté, pas sur le PC** : C1 (1000 µF) se
-   charge à travers le port, qui peut se mettre en sécurité.
+   J1, J2 ou J37 (sortie du boost, du buck, du chargeur).
+3. Remettre JP22 dans sa position de service avant de réinstaller l'unité.
 
-### 10.4 Pourquoi « jamais les deux » avec le pont de fil
+### 10.5 Pourquoi « jamais les deux » quand JP22 est posé
 
-Entre le port USB et l'alimentation, il ne reste que la diode série du DevKit.
+Entre le port USB et la source de la carte, il ne reste que la diode série du DevKit.
 
 - **La carte ne la maîtrise pas** : elle dépend du module. Si un clone n'en a pas, ou si elle est
-  en court-circuit, une source de 5,1-5,2 V capable de 3 A pousse dans le port du PC.
-- **Même avec la diode** : si l'alimentation faiblit ou se coupe, le port USB reprend d'un coup
-  toute la charge de la carte (relais, servos).
+  en court-circuit, une source de 5,2 V capable de 3 A pousse dans le port du PC.
+- **Même avec la diode** : si la source faiblit ou se coupe, le port USB reprend d'un coup toute
+  la charge de la carte (692 mA dans la simulation, modules et servos en plus).
 
 Contrôle de la diode d'un DevKit, au multimètre en test de diode : module hors carte et hors
 tension, câble USB-A branché sur le module, autre bout libre. Sur la fiche USB-A, repérer GND
 (contact extérieur en continuité avec la broche GND du module) ; VBUS est l'autre contact
 extérieur. Pointe rouge sur VBUS, pointe noire sur la broche 5 V du module : 0,15 à 0,45 V.
-Pointes inversées : pas de conduction. Environ 0 V dans les deux sens : pas de diode, ce module
-ne doit jamais voir l'USB et une alimentation en même temps.
+Pointes inversées : pas de conduction. Environ 0 V dans les deux sens : pas de diode ; avec
+JP22 ôté la carte reste protégée par D5, avec JP22 posé ce module ne doit jamais voir l'USB et
+une source en même temps.
 
-### 10.5 Travailler sur une carte alimentée
+### 10.6 Travailler sur une carte alimentée
 
-- **Carte d'établi** : 1N5822 sur D5 et source à 5,1 V ferme (consigne du README, proposition
-  en attente de validation). La 1N5822 n'est plus dans les achats depuis la 0.2.2
-  (`COMMANDE.md`) : en prévoir une ou deux si la proposition est retenue.
-- **Unités déployées** : pont de fil et règle du §8, sans exception.
-- **Moniteur série sans l'USB du DevKit** : adaptateur USB-série 3,3 V sur J17, deux fils
-  seulement, GND (J17-2) et TX0 (J17-5) vers le RX de l'adaptateur. Ne relier ni J17-1 (3V3)
-  ni J17-6 (+5V). Lecture seule.
-- **Mise à jour du firmware** : OTA, ou USB carte hors tension.
+- **JP22 ôté** (msp1, ffp5cs, ffp5cs 12 V) : brancher l'USB du DevKit carte alimentée est
+  permis — moniteur série, téléversement.
+- **JP22 posé** (n3pp sur chargeur 5,0 V) : débrancher le chargeur avant de brancher l'USB, ou
+  OTA, ou moniteur série par un adaptateur USB-série 3,3 V sur J17 : deux fils seulement, GND
+  (J17-2) et TX0 (J17-5) vers le RX de l'adaptateur. Ne relier ni J17-1 (3V3) ni J17-6 (+5V).
+- Sur ffp5cs-WROOM, ôter JP1 pour téléverser par USB (pull-up 1-Wire sur GPIO2) : inchangé.
 
-### 10.6 Déduit, non mesuré
+### 10.7 Simulé ou déduit, non mesuré
 
-1. Présence, chute et calibre de la diode série sur les DevKit 38 broches et les clones S3
-   utilisés (contrôle du §10.4, à faire sur chaque lot).
-2. Tension réelle du rail en USB seul (~4,6 V attendus) et tenue du 3,3 V capteurs.
-3. Conduction inverse de Q12 avec VGS ≈ −4,6 V : déduite de la fiche de l'IRF4905, non simulée.
-4. Tolérance du boost, du buck et du Hi-Link à ~4,6 V appliqués sur leur sortie, entrée non
-   alimentée : non vérifiée module par module.
-5. Réaction d'un port de PC à la charge de C1 au branchement : non essayée.
+1. Chute réelle de la 1N5822 posée, à froid et à chaud : deux courbes de fiche simulées.
+2. Présence, chute et calibre de la diode série sur les DevKit 38 broches et les clones S3
+   utilisés (contrôle du §10.5, à faire sur chaque lot).
+3. Tension réelle des sources en charge (boost, buck, bloc, chargeur) : à mesurer au multimètre
+   sur J1 avant de fermer un coffret.
+4. Conduction inverse de Q12 avec VGS ≈ −4,6 V : déduite de la fiche de l'IRF4905.
+5. Tolérance du boost, du buck et du chargeur à ~4,4 V appliqués sur leur sortie, entrée non
+   alimentée (cas USB seul, source restée branchée) : non vérifiée module par module.
 6. Envoi de données vers RX0 par J17-4 alors que la puce USB du DevKit pilote la même ligne :
-   non vérifié ; c'est pourquoi le §10.5 se limite à la lecture.
+   non vérifié ; c'est pourquoi le §10.6 se limite à la lecture.

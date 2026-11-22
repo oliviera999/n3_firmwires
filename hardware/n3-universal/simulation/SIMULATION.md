@@ -19,28 +19,40 @@ en mode batch (même moteur que le simulateur intégré de KiCad), piloté par P
 > PCB retouché localement (pads 2/3 de Q7, pistes +5V / LDO_IN / ADC_E, README §0.2.1), zones
 > remplies, **DRC KiCad 10.0.7 avec parité : 0 / 0 / 0**, gerbers v0.2.1 exportés. Les points 4, 6 et 11 (marges) sont documentés, pas modifiés.
 
+> 🟢 **Rev 0.3 (2026-11-22)** — la carte n'a plus de relais ni d'étage transistor : les points 1
+> et 2 décrivent la rev 0.2.x et sont **remplacés par le §13**. Les points 6, 11 et 12 ont été
+> **recalculés** (D5 = 1N5822 revenue, C14 220 µF, modules relais externes) : chiffres au §13.
+> ⚠️ En refaisant ces calculs, un défaut des modèles de régulateur a été corrigé : ils ne tiraient
+> pas leur courant de charge sur leur entrée. Les marges des points 6, 11 et 12 ci-dessous
+> étaient donc **optimistes de 0,15 à 0,2 V** ; les valeurs du §13 font foi.
+
 ## Synthèse
 
 | # | Bloc | Verdict | Chiffre clé (simulation) | Action proposée |
 |---|---|---|---|---|
-| 1 | Étage relais K1-K6 (1k / BC337-40 / 10k / 1N4007 / LED 1k) | ✅ tient, marges larges | Vce(sat) 38-51 mV sur 120 tirages Monte-Carlo (hFE 250-630, R ±5 %, Vcc 4,5-5,25 V, −10…+60 °C) ; bobine ≥ 4,46 V (> 3,75 V requis) ; pic roue libre 5,76 V ; GPIO 2,4 mA | aucune |
-| 2 | Sélecteur de forçage JP5-JP10 | ✅ | ON forcé + GPIO bas : le GPIO absorbe 0,72 mA ; OFF forcé + GPIO haut : le GPIO débite 3,1 mA | aucune |
+| 1 | Étage relais K1-K6 (1k / BC337-40 / 10k / 1N4007 / LED 1k) — **→ remplacé en rev 0.3 (§13.1)** | ✅ tient, marges larges | Vce(sat) 38-51 mV sur 120 tirages Monte-Carlo (hFE 250-630, R ±5 %, Vcc 4,5-5,25 V, −10…+60 °C) ; bobine ≥ 4,46 V (> 3,75 V requis) ; pic roue libre 5,76 V ; GPIO 2,4 mA | aucune |
+| 2 | Sélecteur de forçage JP5-JP10 — **→ remplacé en rev 0.3 (§13.1)** | ✅ | ON forcé + GPIO bas : le GPIO absorbe 0,72 mA ; OFF forcé + GPIO haut : le GPIO débite 3,1 mA | aucune |
 | 3 | **Rail capteurs +3V3_SW : Q7 IRF4905** (D = +5V, S = LDO_IN) | ❌ **bloquant (msp/n3pp)** | JP1 ôté, GPIO13 bas : **LDO_IN = 4,58 V** par la diode interne de Q7, **+3V3_SW = 3,30 V** — le rail n'est jamais coupé ; résultat indépendant de Vgs(th) | **inverser D et S de Q7** (source = +5V, drain = LDO_IN) dans `generate.py` ; avec la correction le rail tombe à 0 V |
 | 4 | Q12 anti-inversion 5 V (Vgs = −5 V) | ⚠️ marge selon la pièce | chute à 1 A : 47 / 69 / **140 mV** pour Vgs(th) = −2 / −3 / −4 V (dispersion datasheet) ; à 2,5 A : jusqu'à 0,41 V et 1 W | documenter la limite (≤ 2 A sur jack) ou passer à un canal P « logic-level » (Rds(on) spécifié à Vgs = −4,5 V) |
 | 5 | Inversion de polarité sur J1/J2 | ✅ | courant inverse < 10 nA, +5V reste à 0 V, reprise à 4,97 V | aucune |
-| 6 | **Chaîne 5 V → DevKit** (Q12 + D5 1N5822 + AMS1117) | ⚠️ marge serrée | pour 3V3 ≥ 3,2 V il faut **≥ 4,65 V** sur J1/J2 (ESP 250 mA), **≥ 4,75-4,80 V** (Wi-Fi 450 mA, Q12 défavorable) ; à 4,75 V : 3,17-3,24 V | exiger un bloc 5 V « vrai » (≥ 5,0 V en charge, câble court) ; le Hi-Link ou un buck réglé à **5,1-5,2 V** règle la question |
+| 6 | **Chaîne 5 V → DevKit** (Q12 + D5 1N5822 + AMS1117) — **→ recalculé en rev 0.3 (§13.2)** | ⚠️ marge serrée | pour 3V3 ≥ 3,2 V il faut **≥ 4,65 V** sur J1/J2 (ESP 250 mA), **≥ 4,75-4,80 V** (Wi-Fi 450 mA, Q12 défavorable) ; à 4,75 V : 3,17-3,24 V | exiger un bloc 5 V « vrai » (≥ 5,0 V en charge, câble court) ; le Hi-Link ou un buck réglé à **5,1-5,2 V** règle la question |
 | 7 | Bus 12 V : Q11 + D9 zener 15 V + D8 TVS 18 V | ✅ | Vgs(Q11) borné à −14,8 V sur 10,5-15,5 V ; chute 44-73 mV à 3 A ; surtension 30 V/2 ms : bus écrêté à 21,1 V (TVS 23 A crête, ~440 W moyens) ; inversion −12,8 V : < 1 µA | aucune ; C5 25 V et bucks MP1584/XL4015 (28-38 V) tiennent 21 V |
 | 8 | Pont VBAT 100k/22k (bus 12 V) | ✅ (nuance précision) | 3,1 V ADC ↔ **17,2 V** ; mais la zone linéaire de l'ADC (≤ 2,45 V) s'arrête à **13,6 V** : l'absorption AGM 14,4-14,7 V tombe dans la zone comprimée ; clamp D11 : à 22 V sur J25, ADC 3,43 V, 28 µA dans D11 — sûr ; τ = 0,53 ms | soit garder et s'appuyer sur `esp_adc_cal` (erreur typ. 1-2 % jusqu'à 3,1 V), soit 100k/18k (3,1 V ↔ 20,3 V, 14,7 V → 2,24 V) |
 | 9 | Pont VBAT 100k/100k (1S) | ✅ | 4,2 V → 2,10 V ; pleine échelle 6,2 V | aucune |
 | 10 | Ponts écho HC-SR04 1k/2k (JP13-15 fermés) | ✅ | écho 5,0 V → 3,23 V ; 5,25 V → 3,39 V (max abs. ESP32 3,6 V) ; front 50 ns | aucune ; JP **ouvert** avec un capteur 5 V = 5 V sur le GPIO (déjà documenté) |
-| 11 | **Dynamique du rail 5 V** (6 relais + Wi-Fi + servo) | ⚠️ selon la source et le servo (SG90 retenu : OK avec source ferme) | relais + Wi-Fi seuls : 4,81 V (bloc 5 V/0,25 Ω) ; bloc faible 4,8 V/0,5 Ω : 4,48 V et 3V3 du DevKit à 3,02 V pendant les rafales ; **appel servo 2,5 A : +5V tombe à 3,65-3,9 V (2,75 V avec le bloc faible), 3V3 à 2,2-2,4 V → reset ESP32** quelle que soit la source simulée | ne jamais alimenter les servos par le jack 5 V/2,5 A : Hi-Link 20M05 ou buck 5 A, câble court, et/ou alimentation servo séparée (déjà envisagé pour le profil 12 V : à rendre explicite) |
-| 12 | **Fermeture de Q7 sur C2 déchargé** (rev 0.2.2+, rail commuté msp/n3pp) — ajout du 2026-11-18 | ⚠️ marge mince avec C2 = 470 µF sur source faible | boost 1S limité à 1 A ou bloc 4,8 V/0,5 Ω : +5V à 3,7-3,9 V et **3V3 du DevKit à 2,6-2,8 V pendant ~0,8-1 ms** à chaque réveil ; C2 = 100 µF : ≥ 3,06 V sur boost et bloc correct (2,85 V dans le pire cas bloc faible + Q7 favorable) ; Hi-Link / JP1 fermé : sans objet | C2 = **100 µF sur msp**, **non posé sur n3pp**, 470 µF sur ffp5cs (pose par profil, carte inchangée) |
+| 11 | **Dynamique du rail 5 V** (6 relais + Wi-Fi + servo) — **→ recalculé en rev 0.3 (§13.3)** | ⚠️ selon la source et le servo (SG90 retenu : OK avec source ferme) | relais + Wi-Fi seuls : 4,81 V (bloc 5 V/0,25 Ω) ; bloc faible 4,8 V/0,5 Ω : 4,48 V et 3V3 du DevKit à 3,02 V pendant les rafales ; **appel servo 2,5 A : +5V tombe à 3,65-3,9 V (2,75 V avec le bloc faible), 3V3 à 2,2-2,4 V → reset ESP32** quelle que soit la source simulée | ne jamais alimenter les servos par le jack 5 V/2,5 A : Hi-Link 20M05 ou buck 5 A, câble court, et/ou alimentation servo séparée (déjà envisagé pour le profil 12 V : à rendre explicite) |
+| 12 | **Fermeture de Q7 sur C2 déchargé** (rev 0.2.2+, rail commuté msp/n3pp) — ajout du 2026-11-18 — **→ recalculé en rev 0.3 (§13.4)** | ⚠️ marge mince avec C2 = 470 µF sur source faible | boost 1S limité à 1 A ou bloc 4,8 V/0,5 Ω : +5V à 3,7-3,9 V et **3V3 du DevKit à 2,6-2,8 V pendant ~0,8-1 ms** à chaque réveil ; C2 = 100 µF : ≥ 3,06 V sur boost et bloc correct (2,85 V dans le pire cas bloc faible + Q7 favorable) ; Hi-Link / JP1 fermé : sans objet | C2 = **100 µF sur msp**, **non posé sur n3pp**, 470 µF sur ffp5cs (pose par profil, carte inchangée) |
+| 13 | **Rev 0.3 — commande directe d'un module relais actif haut** (GPIO → Rs 470 Ω → S, rappel 10 kΩ, forçage direct) | ✅ sous réserve du module réel | pire cas : Ib 1,38 mA, Vce 0,13 V, 98 % de la tension sur la bobine ; 150 tirages : 0 échec ; au démarrage 0 à 1,4 mA dans la bobine ; forçage contraire : 6,5 mA dans le GPIO | essai sur table du module avant commande (`MODULES_RELAIS.md` §8) |
+| 14 | **Rev 0.3 — D5 1N5822 + cavalier JP22 + C14 220 µF** | ⚠️ marge du régulateur du DevKit mince ou négative avec une source à 5,0 V | marge au pire cas : −0,15 à −0,21 V à 5,0 V, **+0,02 à +0,18 V à 5,2 V**, +0,3 à +0,5 V cavalier posé | **source à 5,2 V, JP22 ôté** ; n3pp sur chargeur 5,0 V : JP22 posé, jamais d'USB en même temps |
 
 Ce que les contrôles existants ne pouvaient pas voir : ERC/DRC vérifient la connectivité et la
 géométrie, pas le sens de conduction d'un MOSFET. Le point 3 est précisément un cas « netlist
 correcte, circuit faux ».
 
 ## 1-2. Étage relais et forçage
+
+> Rev 0.2.x — **→ remplacé en rev 0.3** : l'étage a quitté la carte (§13.1). Le script
+> `sim1_relay.py` est retiré ; les figures `out/s1_relay_*.png` restent comme archives.
 
 Circuit simulé : GPIO (3,3 V, 50 Ω de sortie) → Rb 1k → base BC337-40, Rp 10k base-GND,
 bobine SRD-05 (70 Ω + L), 1N4007 en roue libre, LED rouge + 1k en parallèle de la bobine,
@@ -233,13 +245,142 @@ et le creux disparaît (3,27-3,30 V dans tous les cas). Autrement dit, **plus le
   l'oscilloscope sur la première carte : sonde sur la broche 3V3 du DevKit, déclenchement sur
   GPIO13.
 
+## 13. Rev 0.3 — modules relais externes, D5 et JP22 (2026-11-22)
+
+Tous les chiffres de cette section sont **simulés** (ngspice 42, `models.lib` corrigé). Aucun n'est
+mesuré. Hypothèse centrale, **à vérifier sur un exemplaire** : le module relais est un KY-019,
+entrée S → 1 kΩ → base d'un NPN S8050 → bobine 70 Ω (`MODULES_RELAIS.md` §1 et §8).
+
+### 13.1 Commande d'un module relais (`sim1_module_cmd.py`, `out/s1_results.json`)
+
+Circuit : GPIO (3,3 V, 40 Ω) → **Rs** → ligne → borne S ; **10 kΩ** de la ligne à la masse ;
+cavalier de forçage : ligne au +3V3 (ON) ou à la masse (OFF), sans résistance. Dans le module :
+Rbm → base, bobine 70 Ω + 100 mH, diode de roue libre, LED + 1 kΩ. Le transistor du module est
+simulé avec le modèle BC337 dont le gain est réglé (hFE 65 au pire, 160 nominal, 400 pour le
+module le plus sensible).
+
+| Rs | Module (Rbm) | Coin | Ib | Vce | Tension bobine | Colle ? |
+|---|---|---|---|---|---|---|
+| 470 Ω | 1 kΩ | nominal (3,3 V / 5,0 V) | 1,61 mA | 0,06 V | 4,94 V | oui |
+| 470 Ω | 1 kΩ | défavorable (3,0 V, hFE 65, 5,25 V, −10 °C) | 1,38 mA | 0,13 V | 5,12 V (98 %) | oui |
+| 1 kΩ | 1 kΩ | nominal | 1,15 mA | 0,07 V | 4,93 V | oui |
+| 1 kΩ | 1 kΩ | défavorable | 0,99 mA | 1,28-1,55 V | 3,70-3,97 V | limite : transistor non saturé |
+| 470 Ω | 2,2 kΩ et plus | défavorable | ≤ 0,8 mA | — | — | non : module à écarter ou Rs à réduire |
+
+- **Rs = 470 Ω retenue.** Monte-Carlo, 150 tirages (R ±5 %, hFE 65-400, bobine ±10 %, 4,5-5,25 V,
+  3,0-3,3 V, −10…+60 °C) : Vce ≤ 0,08 V, bobine ≥ 4,44 V, 0 tirage sous 3,75 V. Avec 1 kΩ :
+  Vce jusqu'à 0,19 V, 0 échec, mais le coin défavorable ci-dessus n'a plus de marge.
+- **Forçage contraire au firmware** : cavalier ON et GPIO bas, ou cavalier OFF et GPIO haut :
+  **6,5 mA** dans le GPIO (3,3 V / 510 Ω), 20 mW dans Rs. Avec 220 Ω : 13 mA.
+- **Démarrage** (module le plus sensible, 60 °C) : GPIO en l'air → ligne à 0 V, bobine 0 mA.
+  GPIO tiré au +3V3 par 45 kΩ → ligne 0,57 V, 1,4 mA dans la bobine. Par 30 kΩ → 0,65 V, 9,7 mA,
+  0,68 V sur la bobine (collage : 3,75 V au plus). Sans le rappel de 10 kΩ et avec 45 kΩ : 24 mA,
+  1,7 V sur la bobine — c'est ce que le rappel évite.
+- **Impulsion de 60 µs à la mise sous tension du S3** (GPIO1-20, fiche Espressif) : 3,1 mA crête
+  dans une bobine de 100 mH, 6,0 mA dans 50 mH. Pas de collage.
+- **GPIO45 du S3 (K6, AUX2)** : en AUTO la broche voit 0 V au reset ; avec un cavalier ON elle
+  verrait 3,27 V, d'où JP10 sans position ON.
+- Seuil de la ligne à 60 °C : 0,64-0,72 V pour 7 mA dans la bobine ; 0,84-1,52 V pour 3,75 V.
+
+### 13.2 D5 1N5822, cavalier JP22, marge du régulateur du DevKit (`sim7_d7_supply.py`, `out/s7_results.json`)
+
+Chaîne : source → câble → Q12 → +5V → **D5** (ou JP22) → VIN_5V (**C14 220 µF**) → AMS1117 du
+DevKit → 3V3. Marge = VIN_5V − 4,49 V (ce qu'il faut à l'AMS1117 pour sortir 3,3 V sous 0,45 A,
+pointe Wi-Fi). « Pire » : courbe maximale de la diode, Q12 à Vgs(th) = −4 V. « Typique » : courbe
+typique, −3 V.
+
+| Profil | Source | Marge pire | Marge typique | JP22 posé (typique) |
+|---|---|---|---|---|
+| msp1 | boost 5,0 V | −0,03 V | +0,10 V | +0,42 V |
+| msp1 | boost 5,1 V | +0,07 V | +0,20 V | +0,52 V |
+| msp1 | **boost 5,2 V** | **+0,18 V** | +0,30 V | +0,62 V |
+| n3pp, 1 module | chargeur 5,0 V, câble 0,25 Ω | −0,15 V | −0,01 V | **+0,32 V** |
+| n3pp, 1 module | chargeur 5,2 V | +0,07 V | +0,20 V | +0,52 V |
+| ffp5cs, 6 modules sur le rail | bloc 5,0 V, 0,15 Ω | −0,21 V | −0,03 V | +0,29 V |
+| ffp5cs, modules sur le bloc | bloc 5,0 V, 0,15 Ω | −0,06 V | +0,07 V | +0,39 V |
+| ffp5cs, 6 modules sur le rail | **bloc 5,2 V**, 0,15 Ω | **+0,02 V** | +0,17 V | +0,50 V |
+| ffp5cs 12 V, 6 modules | buck 5,1 V | −0,04 V | +0,12 V | +0,44 V |
+
+- Une marge négative ne coupe pas la carte : le 3V3 du DevKit descend d'autant (−0,2 V → 3,1 V)
+  pendant les pointes Wi-Fi. Le risque vient de l'addition avec un autre creux (servo, §13.3).
+- Tension de source minimale pour garder 3V3 ≥ 3,20 V : 4,95 V (msp1), 5,05 V (n3pp), 5,10 V
+  (ffp5cs, 6 modules) au pire cas ; 4,81 / 4,91 / 4,94 V en typique ; 4,5-4,6 V cavalier posé.
+- `sim3_power.py` refait avec le modèle corrigé : pour 3V3 ≥ 3,2 V il faut **≥ 4,80 V** sur J1/J2
+  (ESP à 250 mA), **≥ 4,90 V** (450 mA), **≥ 5,00 V** (450 mA, Q12 défavorable). Le point 6 de la
+  synthèse annonçait 4,65 / 4,75 / 4,80 V.
+- **USB seul, JP22 posé** (USB 5,0 V, câble 0,3 Ω, diode du DevKit) : rail à 4,58 V au repos,
+  4,43 V pendant le Wi-Fi (3V3 du DevKit 3,23 V) ; avec 2 modules collés 4,37 V et 3,18 V.
+  Câble de 0,6 Ω ou port à 4,75 V : U1 (3,3 V capteurs) ne régule plus.
+- **USB et source ensemble, JP22 ôté** : source 5,1 V → le DevKit tire 119 mA sur l'USB et la
+  carte 573 mA sur la source ; source absente → rail à 0 V, DevKit seul sur l'USB. Aucun courant
+  ne remonte vers une source.
+- **USB et source ensemble, JP22 posé (interdit)** : source absente → l'USB porte toute la carte
+  (692 mA dans la simulation), à travers la seule diode du DevKit.
+
+### 13.3 Dynamique du rail 5 V avec modules (`sim4_adc_rail.py`, `sim5_servo_sweep.py`, `sim7_d7_supply.py`)
+
+Six modules collés l'un après l'autre, rafales Wi-Fi de 350 mA, puis un servo qui force pendant
+60 ms. Le servo est compté sur le rail +5V (hypothèse prudente : il est en réalité derrière Q7).
+
+| Source | JP22 | 6 modules + Wi-Fi : 3V3 mini | + SG90 bloqué (0,65 A) | + 1,5 A |
+|---|---|---|---|---|
+| bloc 5,0 V, 0,25 Ω | ôté | 3,06 V | **2,84 V** | 2,53 V |
+| bloc 5,0 V, 0,25 Ω | posé | — | 3,25 V | 2,94 V |
+| bloc 5,0 V, 0,10 Ω | posé | — | 3,29 V | 3,29 V |
+| bloc ou buck **5,2 V, 0,10 Ω** | ôté | — | **3,29 V** | 3,15 V |
+| bloc 5,2 V, 0,25 Ω | ôté | — | 3,05 V | 2,75 V |
+| bloc faible 4,8 V, 0,5 Ω | posé | 2,64 V (ôté) | 2,64 V | 1,91 V |
+
+- La règle « 5,2 V, JP22 ôté » tient un SG90 qui force **si le câble est court et épais**
+  (0,10 Ω). Avec 0,25 Ω de câble, le 3V3 descend à 3,05 V : pas de redémarrage attendu, mais plus
+  de marge.
+- Avec une source à 5,0 V et JP22 ôté, un servo qui force amène le 3V3 à 2,84 V : à éviter sur
+  ffp5cs (nourrisseurs). C'est le cas d'usage du cavalier posé, ou de la source à 5,2 V.
+- `sim7_d7_supply.py`, ffp5cs sur bloc 5,0 V / 0,15 Ω, SG90 : 2,85 V (D5), 3,26 V (JP22 posé) ;
+  bloc 5,2 V : 3,12 V (D5), 3,26 V si les modules sont alimentés directement par le bloc.
+- Un MG996R (2,5 A) fait redémarrer la carte dans tous les cas, sauf bloc 5,0 V / 0,10 Ω avec
+  JP22 posé (3,14 V) : hors du périmètre de la carte, comme en 0.2.x.
+
+### 13.4 Fermeture de Q7 sur C2 déchargé, avec D5 et C14 (`sim6_q7_inrush.py`, `sim7_d7_supply.py`)
+
+Avec D5, le creux du +5V au réveil (§12) se retranche de la marge déjà entamée par la diode ;
+C14 (220 µF sur VIN_5V, derrière la diode) tient le DevKit pendant ce creux.
+
+| Source (msp1) | C2 | C14 | +5V au plus bas | 3V3 du DevKit au plus bas | Sous 3,0 V |
+|---|---|---|---|---|---|
+| boost 5,1 V limité à 1 A | 470 µF | aucun | 3,64 V | 2,16 V | 2,0 ms |
+| | 470 µF | 220 µF | 3,65 V | 2,97 V | 0,3 ms |
+| | 100 µF | aucun | 4,24 V | 2,74 V | 0,2 ms |
+| | **100 µF** | **220 µF** | 4,24 V | **3,30 V** | — |
+| **boost 5,2 V** limité à 1 A | 470 µF | 220 µF | 3,71-4,56 V | 3,05-3,10 V | — |
+| | 100 µF | 220 µF | 4,31-4,75 V | 3,30 V | — |
+| bloc 5,0 V / 0,25 Ω | 470 µF | 220 µF | 3,99-4,54 V | 3,06-3,17 V | — |
+| bloc faible 4,8 V / 0,5 Ω | 470 µF | 220 µF | 3,64-4,37 V | 2,78-2,89 V | 1,2-4,4 ms |
+
+- **C14 = 220 µF posé sur toutes les cartes** ; **C2 = 100 µF sur msp** (proposition du
+  2026-11-18, reprise dans `achats/inventaire.py`, à confirmer), non posé sur n3pp, 470 µF sur
+  ffp5cs.
+- Fourchettes pour Vgs(th) de Q7/Q12 = −2 à −4 V (`out/s6_results.json`, 48 cas).
+
+### 13.5 Limites propres à cette section
+
+- Le module relais n'est pas mesuré : valeur de sa résistance d'entrée, gain de son transistor,
+  présence d'une résistance base-émetteur. La grille de `s1_results.json` couvre 1 à 10 kΩ, avec
+  et sans 10 kΩ base-émetteur.
+- Diode 1N5822 : deux courbes (maximale de la fiche à 25 °C, typique). La chute baisse à chaud.
+- Régulateurs : modèles comportementaux corrigés le 2026-11-19 (ils tirent maintenant leur
+  courant de sortie sur leur entrée). Chute de l'AMS1117 : valeur typique de fiche, pas celle
+  d'un clone.
+- Sources : résistance série ou limite de courant, sans régulation dynamique réelle.
+
 ## Limites des modèles (à lire avant de citer un chiffre)
 
 - **IRF4905** : modèle VDMOS calibré sur la datasheet (Rds(on) 23 mΩ à −10 V, diode interne
   0,55 V à 0,5 A). La dispersion de Vgs(th) est balayée (−2/−3/−4 V), pas la température.
 - **BC337-40** : modèle Gummel-Poon type NXP, hFE balayé sur 250-630 en Monte-Carlo.
 - **LD1117 / AMS1117** : modèles **comportementaux** (Vout = min(3,3 ; Vin − Vdrop(I)),
-  Iq 5 mA). Corrects pour DC, dropout et thermique ; **ne disent rien de la stabilité en
+  Iq 5 mA ; depuis le 2026-11-19 le courant de sortie est tiré sur l'entrée — avant cette date
+  les chutes en amont du régulateur étaient sous-estimées). Corrects pour DC, dropout et thermique ; **ne disent rien de la stabilité en
   fonction de l'ESR** des condensateurs de sortie (garder ≥ 10 µF électrolytique, comme prévu).
 - **Bobine SRD-05** : 70 Ω connus, inductance supposée (50-200 mH balayés).
 - **TVS / zener** : diodes avec Vbr et pente dynamique datasheet, coude approximatif.
@@ -253,20 +394,21 @@ et le creux disparaît (3,27-3,30 V dans tous les cas). Autrement dit, **plus le
 ```bash
 sudo apt install ngspice          # ngspice 42 ; python3 + numpy + matplotlib
 cd hardware/n3-universal/simulation
-python3 sim1_relay.py             # étage relais : transitoire, L, forçage, Monte-Carlo
+python3 sim1_module_cmd.py        # rev 0.3 : commande d'un module relais actif haut (Rs, forçage, démarrage)
 python3 sim2_gate.py              # rail capteurs : câblage rev 0.2 vs corrigé, Vgs(th)
 python3 sim3_power.py             # Q12, inversion, chaîne 5 V -> DevKit, Q11/D8/D9
 python3 sim4_adc_rail.py          # pont VBAT, écho HC-SR04, dynamique du rail 5 V
 python3 sim5_servo_sweep.py       # appel servo par type (SG90 / MG90S / MG996R) et par source
 python3 sim6_q7_inrush.py         # fermeture de Q7 sur C2 déchargé, par source et par valeur de C2
+python3 sim7_d7_supply.py         # rev 0.3 : D5 1N5822 / JP22 / C14, marges par profil, USB seul, USB + source
 
 # Depuis le schéma KiCad (champs Sim.*, rev 0.2.1) : export puis banc rail capteurs
 kicad-cli sch export netlist --format spice -o simulation/out/n3-universal-kicad.spice kicad/n3-universal.kicad_sch
 python3 simulation/bench_kicad_netlist.py       # code 1 si le rail ne se coupe pas
 ```
 
-Dans KiCad (Inspecter → Simulateur), les composants sans modèle (connecteurs, relais,
-modules, fusible, varistance, points de test) sont exclus ; ajouter les sources (VDC sur
+Dans KiCad (Inspecter → Simulateur), les composants sans modèle (connecteurs,
+modules, points de test) sont exclus ; ajouter les sources (VDC sur
 VIN_RAW, VDC ou VPULSE sur GATE/K1…) et lancer un `.op` ou un `.tran`. Attention : le lecteur
 de bibliothèques SPICE de KiCad s'arrête sur un caractère non ASCII, même en commentaire —
 `n3u_sim.lib` est généré translittéré depuis `models.lib` pour cette raison.
