@@ -12,6 +12,18 @@ commande de PCB (checklist : [TUTO_PCB.md §9](TUTO_PCB.md)).
 > couloirs, repères de sérigraphie — sont consignés dans
 > [`n3-universal/AUDIT-2026-08-28.md`](n3-universal/AUDIT-2026-08-28.md) §14.
 
+> 🆕 **n3-universal rev 0.3.0 (2026-11-22)** — carte sans 230 V, sans relais, sans étage transistor
+> (278 × 91 mm, 140 empreintes). Contrôles passés sous KiCad 10.0.8 : générateur idempotent ;
+> ERC 0 erreur ; **DRC avec parité : 0 erreur, 0 non connecté, 0 écart** (26 avertissements de
+> sérigraphie) ; `check_fet_orientation`, `check_pinmap_vs_firmware` (3 firmwares × 2 sites, six
+> canaux de commande, D5 / JP22 / C14), `check_silk_refs`, `check_pcb_clearance`,
+> `annotate_pcb_roles --check`, `sync_pcb_sim_fields --check`, `check_jlcpcb_caps`,
+> `achats --check`, `fritzing --check` ; banc SPICE sur la netlist KiCad ; simulations sim1 à
+> sim7 ; `export_fab.py --rev 0.3.0` (DRC bloquant, zip 10 fichiers). Plus de contrôle 3 mm /
+> 6,5 mm : il n'y a plus de secteur sur la carte. Tableau : `n3-universal/README.md`, section
+> « Rev 0.3 ». Non contrôlé par le dépôt : JLCDFM et essai sur table d'un module relais
+> (`n3-universal/COMMANDE.md` §0).
+
 ## Résultats
 
 | Contrôle | n3pp-msp-commun | ffp5cs-wroom-prod | ffp5cs-wroom-prod-230v |

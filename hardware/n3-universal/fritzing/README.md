@@ -1,10 +1,10 @@
-# Vues de câblage Fritzing — n3-universal rev 0.2.2, une par profil
+# Vues de câblage Fritzing — n3-universal rev 0.3.0, une par profil
 
 | Profil | Sketch | Aperçu |
 |---|---|---|
 | msp1 — station météo + tracker (18650 + solaire) | `n3-universal-msp1.fzz` | `n3-universal-msp1-apercu.png` |
 | n3pp — serre (chargeur 5 V) | `n3-universal-n3pp.fzz` | `n3-universal-n3pp-apercu.png` |
-| ffp5cs — aquaponie secteur 230 V (Hi-Link) | `n3-universal-ffp5cs-230v.fzz` | `n3-universal-ffp5cs-230v-apercu.png` |
+| ffp5cs — aquaponie 230 V (bloc 5 V externe, modules relais) | `n3-universal-ffp5cs-230v.fzz` | `n3-universal-ffp5cs-230v-apercu.png` |
 | ffp5cs — aquaponie 12 V (AGM + PWM solaire) | `n3-universal-ffp5cs-12v.fzz` | `n3-universal-ffp5cs-12v-apercu.png` |
 
 Ouvrir un `.fzz` dans **Fritzing ≥ 1.0** (Fichier → Ouvrir), vue **Platine d'essai**. Les pièces
@@ -13,19 +13,22 @@ construction — **le PCB de référence reste le projet KiCad** (`../kicad/`).
 
 ## Ce que montre chaque vue
 
-- **La carte à l'échelle** (278 × 135 mm), dessinée depuis le PCB routé : chaque bornier,
+- **La carte à l'échelle** (278 × 91 mm), dessinée depuis le PCB routé : chaque bornier,
   support et cavalier à sa vraie place. Composants **posés** en couleur, **non posés** sur ce
   profil en gris pointillé avec `×`, cavaliers posés en bleu avec leur position (`JP12 2-3`),
-  zone 230 V hachurée, trous H1/H5 marqués « NYLON », DevKit enfiché sur ses supports.
+  DevKit enfiché sur ses supports. Rev 0.3 : plus de zone 230 V sur la carte.
 - **Les périphériques et sources d'alimentation** du profil (boîtes étiquetées, broches
   nommées), reliés aux bons borniers par des fils de couleur : rouge +5 V, orange 3,3 V,
   noir GND, rouge sombre bus 12 V, brun phase L / bleu neutre N en 230 V, autres couleurs =
-  signaux. Les ponts entre bornes COM des relais sont dessinés comme des fils.
+  signaux. Rev 0.3 : les **modules relais** sont des boîtes au-dessus de la carte, reliées par
+  trois fils (S / +5V / GND) aux borniers J39-J44 ; la phase ou le bus 12 V arrive sur leurs COM,
+  les charges sur leurs NO — rien de tout cela ne touche la carte.
 - **Une légende** : chaîne d'alimentation, cavaliers, options non dessinées (BME280, INA226
   supplémentaires, microSD), règles de sécurité.
 
 Les résistances, diodes, condensateurs et transistors sont **sur la carte** : aucun composant
-discret n'est à câbler hors carte, sauf les diodes de roue libre aux bornes des pompes DC.
+discret n'est à câbler hors carte, sauf les diodes de roue libre aux bornes des pompes DC. Les
+modules relais portent leur propre transistor, leur diode et leur LED.
 
 ## Régénérer / vérifier
 

@@ -20,11 +20,20 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
   pull-up) — **msp et n3pp ont la SD sans rien sacrifier** ; seul ffp5cs-sur-WROOM
   arbitre par env de build (futur env `wroom-sd`, à créer au besoin : SD contre US_POTA+AUX), RTC **DS3231** et **3 INA226**
   sur I2C (INA alimentés par `+3V3_SW`) ;
-- le **230 V, hors périmètre dans l'étude d'origine, est intégré à la carte** : profil
-  d'alimentation (d), PS1 Hi-Link HLK-20M05 + F1 + RV1 dans un coin secteur isolé par des
-  fentes (voir « Profils d'alimentation » et `COMMANDE.md` §5). La carte
+- **rev 0.3 : plus de 230 V, plus de relais, plus d'étage transistor sur la carte.** Six borniers
+  S / 5V / GND (J39-J44) commandent des **modules relais du commerce actifs à l'état haut** ; le
+  profil 230 V s'alimente par un bloc 5 V externe (section « Rev 0.3 » ci-dessous,
+  [`MODULES_RELAIS.md`](MODULES_RELAIS.md)). Jusqu'à la rev 0.2.3, le 230 V était sur la carte
+  (PS1 Hi-Link + F1 + RV1 dans un coin isolé par des fentes) — → remplacé en rev 0.3. La carte
   `ffp5cs-wroom-prod-230v` reste gelée, comme les deux autres cartes dédiées.
 
+> 🟢 **Rev 0.3.0 (2026-11-22) = version proposée à la commande** : carte **278 × 91 mm**, sans
+> 230 V, sans relais, sans transistor de commande ; firmwares inchangés. Fichier :
+> `exports/gerbers-n3-universal-v0.3.0.zip`. **Avant de payer** : essai sur table d'un module
+> relais ([`MODULES_RELAIS.md`](MODULES_RELAIS.md) §8) et JLCDFM sur le nouveau zip
+> ([`COMMANDE.md`](COMMANDE.md) §0). La 0.2.3 reste commandable (son zip est conservé) tant que la
+> 0.3 n'est pas validée.
+>
 > 🟢 **Rev 0.2 (2026-10-07)** (→ remplacée par la 0.2.2 puis la 0.2.3) — régénérée de bout en bout (schéma,
 > placement, routage, gerbers 2 oz) après la contre-vérification de la 0.1.2 (audit §13 :
 > repères de sérigraphie décalés, J29/J30 sous le DevKit, Q7 NDP6020P introuvable). Ce qui
@@ -37,7 +46,7 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
 > pré-commande : verdict, constats retenus, check-list rev 0.2). Fichiers d'assemblage
 > éventuel : [`exports/pcba/`](exports/pcba/).
 >
-> 🟢 **Rev 0.2.3 (2026-10-31) = version à commander** : site A1 en **ESP32 DevKitC 38 broches**,
+> 🟢 **Rev 0.2.3 (2026-10-31) = version à commander** (→ remplacée en rev 0.3, zip conservé) : site A1 en **ESP32 DevKitC 38 broches**,
 > rangées droites d'A1 et A2 doublées 25,4 / 22,86 mm, carte reroutée (section « Rev 0.2.3 »
 > ci-dessous). Fichier : `exports/gerbers-n3-universal-v0.2.3.zip` ; le zip 0.2.2 est périmé.
 >
@@ -47,7 +56,8 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
 > (`COMMANDE.md` §1 et §5). Empilage 1 oz porté par le `gbrjob` du zip. Résultats JLCDFM
 > (v0.2.3) et lignes attendues dans `COMMANDE.md` §0.
 >
-> ⏸️ **Avant de commander (2026-11-18)** : une simplification est à l'étude —
+> ⏸️ **Avant de commander (2026-11-18)** (→ arbitré le 2026-11-19, réalisé en rev 0.3 : sans
+> l'étage à transistor non plus, voir `SIMPLIFICATION_PROPOSEE.md` §11) : une simplification est à l'étude —
 > [`SIMPLIFICATION_PROPOSEE.md`](SIMPLIFICATION_PROPOSEE.md) : sortir de la carte l'alimentation
 > 230 V et les relais (module relais du commerce piloté par l'étage à transistor conservé),
 > carte ≈ 278 × 90 mm, plus aucun 230 V sur le PCB. **Proposition en attente d'arbitrage** : rien
@@ -66,6 +76,48 @@ site A2 ESP32-S3-DevKitC-1 — rev 0.2.3), 12/24 V, avec :
 > Corrigé dans `generate.py` (source = +5V, drain = LDO_IN), schéma + BOM régénérés, garde
 > `tools/check_fet_orientation.py`, champs `Sim.*` (schéma simulable dans KiCad). **Le PCB
 > routé n'est pas encore à jour** : voir « Rev 0.2.1 » ci-dessous.
+
+## Rev 0.3 — sans 230 V, sans relais, sans étage transistor (2026-11-22) : carte reroutée
+
+Arbitrages du 2026-11-19 ([`SIMPLIFICATION_PROPOSEE.md`](SIMPLIFICATION_PROPOSEE.md) §11) :
+l'alimentation 230 V, les six relais et leur étage de commande quittent la carte. **Firmwares
+inchangés** : même GPIO, même sens (broche haute = relais collé) ; `pinmap_universel_propose.json`
+n'est pas modifié. Mode d'emploi, câblage par profil et essai sur table :
+[`MODULES_RELAIS.md`](MODULES_RELAIS.md).
+
+| Changement | Pourquoi | Conséquence d'usage |
+|---|---|---|
+| **Bloc 230 V retiré** : PS1, F1, RV1, J27, H5, pistes secteur, 19 fentes, règles `Mains`, zone d'exclusion du plan GND, vis nylon | plus aucun 230 V sur le circuit imprimé | ffp5cs 230 V s'alimente par un **bloc 5 V ≥ 2 A** sur J2 ou J1 ; le 230 V ne touche que les modules relais |
+| **Relais K1-K6 et borniers de charge J3-J6, J23, J24 retirés** ; header J38 retiré | relais du commerce, remplaçables, hors carte | modules **actifs à l'état haut** (type KY-019) |
+| **Étage transistor retiré** (Q1-Q6, diodes D1-D4/D6/D7, LED1-4/6/7 et leurs résistances) | le module porte déjà transistor, diode et LED | commande directe : GPIO → **Rs 470 Ω** (R1-R4, R28, R31) → borne S ; rappel **10 kΩ** (R5-R8, R29, R32) |
+| **Six borniers 3 points 5,08 mm J39-J44 : S / 5V / GND**, un par canal, en bord haut | trois fils par module, sans répartiteur | sérigraphie « S 5V GND » au-dessus de chaque bornier |
+| **JP5-JP10 reliés directement** : broche 1 = +3V3 (ON), 2 = ligne, 3 = GND (OFF) | plus de résistance de forçage à prévoir : Rs limite le courant | sans cavalier = AUTO ; **JP7 (chauffage) et JP10 (GPIO45 du S3) sans position ON** |
+| **D5 = 1N5822 sur toutes les cartes** + **JP22** (2 broches, « USB SEUL ») en parallèle | l'USB du DevKit et la source de la carte peuvent coexister | **source à 5,2 V, JP22 ôté** ; n3pp sur chargeur 5,0 V : JP22 posé, jamais d'USB en même temps |
+| **C14 220 µF sur VIN_5V** (derrière D5) | tient le DevKit pendant le creux de fermeture de Q7 (SIMULATION §13.4) | posé sur toutes les cartes |
+| Contour **278 × 91 mm** (135 mm en 0.2.3), 6 trous M3 (H1-H4, H6, H7), J21/J22 déplacés en haut à droite | la bande haute ne porte plus que les borniers de commande | coffret plus petit ; plus de vis nylon imposée |
+
+Écarts par rapport au cahier des charges du chantier (`PROMPT_REV_0.3.md`), tous arbitrés ou
+signalés : hauteur 91 mm au lieu de 85-90 (sérigraphie des borniers) ; six borniers 3 points au
+lieu d'un bornier 8 points (choix B du 2026-11-19) ; JP10 sans ON ; C14 ajouté ; H5 supprimé et
+H2 déplacé au coin haut droit ; C2 = 100 µF proposé sur msp (à confirmer).
+
+**Routage 0.3** : parti du **cuivre validé de la 0.2.3** (`route_universal.py --seed`) : 2 368
+éléments repris, 362 retirés avec les nets disparus, 22 hors du nouveau contour, 62 en conflit
+avec les nouveaux composants ; le reste routé par freerouting 2.1.0 (0 net non routé) ; 86 bouts
+morts retirés, 14 vias de couture. Bilan : 2 244 segments, 151 vias, 12,7 m de piste.
+
+| Contrôle (KiCad 10.0.8 Linux, 2026-11-22) | Rev 0.3.0 |
+|---|---|
+| Générateur idempotent | schéma, `BOM.csv`, `n3u_sim.lib` identiques après régénération ✅ |
+| ERC | 0 erreur |
+| DRC + parité schéma | **0 erreur, 0 non connecté, 0 écart de parité** ; 26 avertissements de sérigraphie (23 recouvrements de textes, 3 contours d'A2 et J2 qui dépassent le bord, comme en 0.2.3) |
+| Gardes | `check_fet_orientation` ✅ ; `check_pinmap_vs_firmware` ✅ (six canaux Rs / rappel / bornier / cavalier, D5, JP22, C14 encodés) ; `check_silk_refs` ✅ ; `check_pcb_clearance` ✅ ; `annotate_pcb_roles --check` ✅ ; `sync_pcb_sim_fields --check` ✅ ; `check_jlcpcb_caps` ✅ ; `tidy_silkscreen` : 0 déplacement ; `achats --check` ✅ ; `fritzing --check` ✅ |
+| Banc SPICE sur la netlist KiCad | rail capteurs 0 V / 3,30 V ✅ |
+| Simulations | sim1 à sim7 relancées (SIMULATION §13) ; assertions de la CI ✅ |
+| `exports/` | **gerbers v0.3.0** (`export_fab.py --rev 0.3.0`, DRC bloquant passé), `schema.pdf`, SVG, vue 3D, BOM/CPL régénérés ; **zip 0.2.3 conservé** |
+
+Non fait par le dépôt, à faire avant de payer : JLCDFM sur le zip 0.3.0, essai sur table d'un
+module relais, devis PCB Maroc (`COMMANDE.md` §0 et §4).
 
 ## Rev 0.2.3 — site A1 en DevKitC 38 broches (2026-10-31) : carte reroutée
 
@@ -209,14 +261,15 @@ borniers KF301, TO-220 courants).
 | Mécanique | 5 trous M3, 278 × 120 | **7 trous M3** (H1/H5 nylon), **278 × 135 mm**, points de test TP1-TP4 (3V3, 3V3_SW, 5V, GND) | montage sur plaque, mesure au multimètre |
 | Carte D11 | BAT85 DO-35 | **empreinte double** DO-35 **ou** SOD-123 (BAT43W C19167) | BAT85 traversant épuisé chez LCSC |
 
-### Cavaliers et profils (livraison : tout en position par défaut ; les cavaliers de forçage se rangent sur le header J38 ou dans le sachet)
+### Cavaliers et profils (livraison : tout en position par défaut ; les cavaliers de forçage se rangent dans le sachet — rev 0.3 : plus de header J38)
 
 | Cavalier | Fonction | Défaut | Autre position |
 |---|---|---|---|
 | JP1 | bypass du gate rail capteurs (header 1×03, broche 3 = parking) | **1-2 fermé** (ffp5cs : rail permanent) | parqué en 2-3 : rail coupé par GPIO (msp/n3pp) |
 | JP2 / JP3 / JP4 | SD CS / CLK / MOSI | **1-2 = S3** | 2-3 = WROOM (env `wroom-sd`) |
 | JP11 | SD MISO | **1-2 = S3** | 2-3 = WROOM |
-| JP5…JP10 | forçage relais K1…K6 | **sans cavalier = AUTO** (GPIO) | 1-2 = ON forcé ; 2-3 = OFF forcé (JP7 : OFF seulement) |
+| JP5…JP10 | forçage des modules relais K1…K6 (rev 0.3 : direct, 1 = +3V3, 3 = GND) | **sans cavalier = AUTO** (GPIO) | 1-2 = ON forcé ; 2-3 = OFF forcé (**JP7 et JP10 : OFF seulement**) |
+| JP22 | court-circuite la diode D5 (rev 0.3), repère « USB SEUL » | **ôté** : source à 5,2 V, USB du DevKit permis en même temps | posé : USB seul (établi), ou source à 5,0 V (n3pp) — alors jamais USB et source ensemble |
 | JP12 | diviseur VBAT | **1-2 = 18k** (bus 12 V, rev 0.2.2) | 2-3 = 100k (1S Li-ion) |
 | JP13 / JP14 / JP15 | diviseurs ECHO HC-SR04 (5 V → 3,3 V) | **fermé** (HC-SR04 5 V) | ôté : capteur 3,3 V / sortie open-collector |
 | JP16…JP19 | bas de pont 10k des entrées ADC A…D (R43…R46 vers GND) | **ôté** : capteur à sortie en tension ≤ 3,3 V (sonde sol n3pp) | fermé : capteur résistif entre 3V3 et SIG (LDR du tracker msp) |
@@ -229,9 +282,10 @@ s'interpose, max absolu ESP32 3,6 V) : ces entrées n'acceptent que des capteurs
 sérigraphie et la BOM étaient justes.)
 | JP21 | pull-up DHT externe | **ôté** | fermé : DHT sur bornier J30 sans pull-up |
 
-Profils d'alimentation (par peuplement, inchangés) : (a) 5 V jack/bornier via Q12 ;
+Profils d'alimentation (par peuplement) : (a) 5 V jack/bornier via Q12 ;
 (b) 1S solaire : boost externe sur J1/J2 ; (c) bus 12 V : J26 → Q11/D8/D9 → buck externe
-J36/J37 → J1 ; (d) secteur : PS1 Hi-Link + F1 + RV1.
+J36/J37 → J1 ; (d) installation 230 V : **bloc 5 V externe** sur J2/J1, comme (a) (rev 0.3 ;
+jusqu'à la 0.2.3 : PS1 Hi-Link + F1 + RV1 sur la carte).
 
 ## Réalisation (rev 0.2 — KiCad 10, chaîne régénérée)
 
@@ -240,9 +294,10 @@ generator/generate.py        Source de vérité : composants, nets, placement, s
                              empreintes locales, règles (.kicad_dru), fp-lib-table, libellés
                              (SCH_TEXTS / PCB_TEXTS), approvisionnement (SOURCING).
                              --regen-pcb réécrit le PCB (non routé)
-generator/route_universal.py Routage : secteur EN DUR (relais + PSU), freerouting 2.1 pour la
-                             logique, ponts A/A' du DevKit, zones GND, vias de couture,
-                             contrôles check_mains_gap (3 mm) et check_mains_plane_gap (6,5 mm)
+generator/route_universal.py Routage (rev 0.3) : --seed reprend le cuivre d'une carte validée
+                             (conflits retirés d'après le DRC), freerouting 2.1 pour le reste,
+                             ponts A/A' du DevKit, zones GND, vias de couture, bouts morts retirés.
+                             Plus de secteur : check_mains_* n'existent plus
 generator/tidy_silkscreen.py Écarte libellés puis repères des pads, fentes, contours ET des
                              courtyards des autres composants
 generator/export_fab.py      DRC bloquant (parité schéma comprise) puis gerbers 7 couches +
@@ -259,10 +314,10 @@ tools/sync_pcb_sim_fields.py       Rev 0.2.1 : champs Sim.* du schéma recopiés
                                    — Python de KiCad ; --check en CI
 tools/check_jlcpcb_caps.py         Rev 0.2.1 : minima JLCPCB 1 oz (pistes, vias, anneaux, trou à trou, fentes,
                                    sérigraphie, épaisseur de cuivre du .gbrjob) — Python de KiCad
-simulation/                        Rev 0.2.1 : banc SPICE ngspice (models.lib, sim1-4, bench_kicad_netlist.py,
+simulation/                        Banc SPICE ngspice (models.lib, sim1-7, bench_kicad_netlist.py,
                                    SIMULATION.md) ; kicad/n3u_sim.lib généré pour le simulateur KiCad
-kicad/n3-universal.*         Projet KiCad 10 (+ .kicad_dru : clearance 3 mm, creepage 6,4 mm,
-                             plans à 6,5 mm du secteur ; fp-lib-table : lib locale n3u)
+kicad/n3-universal.*         Projet KiCad 10 (.kicad_dru vide depuis la rev 0.3 : plus de règles
+                             secteur ; fp-lib-table : lib locale n3u)
 ```
 
 Chaîne complète (Linux : `python3` + Python de KiCad `/usr/bin/python3.12` ; Windows :
@@ -271,13 +326,13 @@ Chaîne complète (Linux : `python3` + Python de KiCad `/usr/bin/python3.12` ; W
 ```
 cd generator
 python3 generate.py --regen-pcb                  # schéma + BOM + PCB non routé + .kicad_dru
-<python KiCad> route_universal.py --jar ~/freerouting.jar   # routage + zones + contrôles 3 / 6,5 mm
+<python KiCad> route_universal.py --jar ~/freerouting.jar --seed <carte validée>.kicad_pcb   # routage + zones + DRC
 <python KiCad> tidy_silkscreen.py                # libellés / repères hors pads, fentes, corps voisins
 python3 ../tools/check_pinmap_vs_firmware.py ; python3 ../tools/check_pcb_clearance.py
 python3 ../tools/check_silk_refs.py ; python3 ../tools/annotate_pcb_roles.py --check
 python3 ../tools/check_fet_orientation.py       # rev 0.2.1 : orientation des P-MOSFET
 <python KiCad> ../tools/sync_pcb_sim_fields.py   # rev 0.2.1 : champs Sim.* sur les empreintes (parité)
-python3 export_fab.py --rev 0.2                  # DRC (0 erreur exigée) puis gerbers v0.2
+python3 export_fab.py --rev 0.3.0                # DRC (0 erreur exigée) puis gerbers v0.3.0
 python3 export_assembly_preview.py
 ```
 
@@ -287,6 +342,9 @@ creepage 6,4 mm et plans 6,5 mm ; écart secteur/logique mesuré 3 mm : 0 violat
 à 6,50 mm du secteur ; 62 avertissements de sérigraphie (contours des relais sur
 les fentes, textes serrés), sans effet électrique. Détail et tableau : audit §14.
 
+- **Rev 0.3 : carte 278 × 91 mm, 1 oz, sans zone secteur** — bande haute = six borniers de commande
+  S / 5V / GND, logique en dessous, rangée de borniers en bande basse. Le point suivant décrit les
+  rev 0.2.x (→ remplacé en rev 0.3).
 - **Carte 278 × 135 mm, 1 oz** (≤ 1 kW résistif / 3 A moteur par canal) — zone secteur en bande haute (6 relais + coin PSU
   Hi-Link, fentes fraisées), logique en dessous, rangée de borniers en bande basse.
   La frontière fraisée **y71-73 n'existe qu'au coin PSU** : dans la bande relais les
@@ -312,7 +370,7 @@ les fentes, textes serrés), sans effet électrique. Détail et tableau : audit 
 - **Profils d'alim par peuplement** : (a) 5 V jack/bornier ; (b) solaire 1S
   (TP4056+18650 hors carte, gate JP1 ôté, diviseur 100k/100k) ; (c) bus 12 V
   (J26 + P-FET + TVS + buck externe via J36/J37, diviseur 100k/18k depuis la 0.2.2) ;
-  (d) secteur Hi-Link 20M05 (J27 + fusible T1A + varistance embarqués).
+  (d) installation 230 V : bloc 5 V externe sur J2/J1 (rev 0.3 ; Hi-Link embarqué jusqu'à la 0.2.3).
   ⚠️ **Profil (b) : injecter le 5 V par J1/J2 via un module boost — JAMAIS la
   batterie 1S brute** (3,0-4,2 V) : la carte n'a pas d'entrée 3V3 (J19 est en aval
   de U1), et l'AMS1117 du DevKit comme le LD1117 passeraient en dropout → brownouts.
@@ -330,13 +388,15 @@ les fentes, textes serrés), sans effet électrique. Détail et tableau : audit 
   futur générateur et par les sections `PINMAP_UNIVERSAL` des trois firmwares.
 - `COMPOSANTS_FFP5CS.csv` — tableau annoté du **rôle ffp5cs** (connecteurs,
   GPIO WROOM/S3, constantes `Pins::`, clés serveur, pose / DNP).
+- `MODULES_RELAIS.md` — **rev 0.3** : quel module relais acheter, câblage par profil, cavalier
+  JP22, sécurité 230 V, fiche d'essai sur table à faire avant de payer.
 - `achats/` — **liste d'achats des 4 projets** (msp1, n3pp, ffp5cs 230 V, ffp5cs 12 V) :
   `achats-n3-universal.xlsx` (feuilles Global, Prix, une par projet avec consignes de pose,
   prix des boutiques marocaines et liens), générée depuis `BOM.csv` par
   `python3 achats/build_achats.py` ; `quantites.csv` en est la photographie texte, comparée en
   CI (`--check`) : la CI échoue si la BOM change sans que la liste d'achats suive.
 - `fritzing/` — **vues de câblage Fritzing, une par profil** (msp1, n3pp, ffp5cs 230 V,
-  ffp5cs 12 V) : carte à l'échelle depuis le PCB routé (posé / non posé, cavaliers, zone 230 V)
+  ffp5cs 12 V) : carte à l'échelle depuis le PCB routé (posé / non posé, cavaliers, modules relais)
   + périphériques et alimentation du profil reliés aux bons borniers ; aperçus PNG ;
   `python3 fritzing/generate_fritzing.py` (`--check` en CI). Voir `fritzing/README.md`.
 
@@ -503,7 +563,8 @@ corrigé la carte et les firmwares AVANT toute commande :
   contrôle indépendant `check_mains_gap` intègre désormais les **zones remplies**.
 - **H1 = VIS NYLON obligatoire** (marquage sérigraphié) : le trou du coin relais
   est enclavé par K1, une tête métal serait à ~4,3 mm du 230 V ; le plan GND est
-  écarté sous la tête (keepout).
+  écarté sous la tête (keepout). *(→ remplacé en rev 0.3 : plus de 230 V sur la carte, plus de
+  vis nylon imposée, H5 supprimé.)*
 
 **Consignes de pose par profil (résistances étoilées `*` de la BOM) :**
 - **R17/R18/R19 (2k, ponts écho HC-SR04)** : à poser **uniquement sur les unités
@@ -516,13 +577,17 @@ corrigé la carte et les firmwares AVANT toute commande :
   3V3_SW/ADC_E).
 - **JP1 en 1-2** = rail `+3V3_SW` permanent (unités ffp5cs) ; ôté = rail commuté
   par GPIO13 (msp/n3pp). La broche 3 de JP1 n'est pas câblée.
-- **C2 (réservoir des servos, sur `LDO_IN`)** — *proposition du 2026-11-18, à valider avant
-  de la reporter dans la BOM, `achats/` et `fritzing/`* : **470 µF sur ffp5cs** (JP1 fermé,
+- **C2 (réservoir des servos, sur `LDO_IN`)** — *proposition du 2026-11-18 ; rev 0.3 : reportée
+  dans `achats/inventaire.py` (100 µF sur msp, `VALUE_BY_PROFILE`) et recalculée avec D5 et C14
+  (`SIMULATION.md` §13.4) — reste à confirmer* : **470 µF sur ffp5cs** (JP1 fermé,
   C2 n'est jamais commuté), **100 µF sur msp**, **non posé sur n3pp** (pas de servo). Sur une
   unité à rail commuté, Q7 se ferme à chaque réveil sur un C2 déchargé : avec 470 µF et une
   source faible (boost 1S, bloc USB médiocre), le +5V s'effondre ~1 ms et le 3V3 du DevKit
   descend à 2,6-2,8 V ; avec 100 µF il reste ≥ 3,06 V sur le boost (2,85 V dans le pire cas
   d'un bloc faible) (`simulation/SIMULATION.md` §12).
+- **D5, rev 0.3** : 1N5822 sur **toutes** les cartes, cavalier **JP22** en parallèle ; source à
+  5,2 V, JP22 ôté (`MODULES_RELAIS.md` §5, `ALIMENTATION.md` §10). Le point suivant décrit la
+  rev 0.2.3 (→ remplacé en rev 0.3).
 - **D5 sur l'unité d'établi** : y poser une **1N5822** au lieu du pont de fil, pour pouvoir
   brancher l'USB du DevKit (moniteur série) carte alimentée ; alimenter cette unité en 5,1 V
   ferme (la diode reprend 0,35 V). Les unités déployées gardent le pont de fil et la règle
