@@ -8,6 +8,15 @@ Guide pour Claude Code (et tout agent) travaillant sur **n3_firmwires** — mono
 > Ce fichier en donne la version opérationnelle pour Claude Code. Les firmwares envoient leurs
 > données au serveur du dépôt **n3_serveur**.
 
+## Où ce dépôt s'inscrit
+
+- **Projet Claude Code** : « n³ IoT » (dépôts `n3_firmwires`, `n3_serveur`, `IOT_n3`) ; ses
+  instructions s'ajoutent à ce fichier.
+- **Projets de chat claude.ai** : « N³ » (projet pédagogique, documentation) et « Pcb » (carte
+  universelle n³, électronique). Les choix matériels s'y discutent ; le code se fait ici.
+- **Connecteur MCP `iot_olution`** : lecture de la prod iot.olution.info (mesures, santé, OTA).
+- `IOT_n3` épingle ce dépôt comme sous-module : après une livraison, y mettre à jour le pointeur.
+
 ## Carte du dépôt (firmwares actifs)
 
 | Firmware | Dossier | Carte | Envs PlatformIO | Version définie dans |
