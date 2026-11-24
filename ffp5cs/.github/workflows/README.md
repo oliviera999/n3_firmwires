@@ -74,11 +74,9 @@ pio project config
 
 #### Erreurs git avec les sous-modules
 
-Synchronisez les sous-modules :
-```bash
-git submodule sync
-git submodule update --init --recursive
-```
+`ffp5cs` n'a plus de sous-module depuis le 24/11/2026 (l'ancien `ffp5cs/ffp3` a été retiré).
+Une erreur de sous-module vient d'un clone ancien : `git submodule deinit --all -f` puis
+supprimer le dossier `ffp3/` résiduel.
 
 #### Le firmware est trop gros (> 100% Flash)
 

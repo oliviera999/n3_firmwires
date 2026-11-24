@@ -130,8 +130,6 @@
 | **scripts/enable_long_paths.ps1** | PS1 | Activation des chemins longs (Windows). |
 | **scripts/minify_assets.py** | Python | Minification des assets web. |
 | **restart_esp32.ps1** | PS1 | Reset ESP32 via esptool + lancement du monitor. |
-| **sync_all.ps1** | PS1 | Mise à jour de tous les sous-modules + commit si changements. |
-| **sync_ffp3distant.ps1** | PS1 | Sous-module ffp3distant (update/push/pull/status). |
 | **install_cppcheck.ps1** | PS1 | Installation de cppcheck (Chocolatey/winget/manuel). |
 | **_add_bom_all.ps1** / **_add_bom.ps1** | PS1 | Ajout BOM UTF-8 aux fichiers. |
 | **read_current_logs.py** | Python | Lecture des logs courants. |
