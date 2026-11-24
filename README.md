@@ -267,7 +267,7 @@ firmwires/
 │   ├── include/energie_config.h
 │   ├── src/main.cpp + modules (energie_board/sensors/network/display/console.cpp)
 │   └── VERSION.md
-├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire dans firmwires ; submodule ffp5cs/ffp3)
+├── ffp5cs/                    # Contrôleur aquaponie (WROOM/S3) (dossier ordinaire, sans sous-module)
 ├── archive/                    # Code historique — ne plus utiliser (utiliser uploadphotosserver/ unifié)
 │   ├── uploadphotosserver_legacy/          # Historique caméra
 │   ├── uploadphotosserver_msp1/            # ESP32-CAM → msp1 (legacy, archivé 2026-06)

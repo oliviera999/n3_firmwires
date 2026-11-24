@@ -26,8 +26,8 @@ envs) est **`firmwares.manifest.json`** — le mettre à jour si on ajoute/dépl
 > système supervisé **côté serveur** (tables `ffp3Data*`, routes `/post-data*`, cible OTA) s'appelle
 > **`ffp3`** ; le firmware s'y identifie via le champ POST `sensor="ffp3"` (`ProjectConfig::SYSTEM_ID`),
 > distinct de `BOARD_TYPE` (`esp32-wroom`/`esp32-s3`, clé OTA + `post_id`). Le mot « ffp3 » recouvre
-> aussi la galerie caméra (`uploadphotosserver -e ffp3`), le sous-module serveur `ffp5cs/ffp3`, et le
-> contrat HMAC générique de `shared/n3_data`. Détails et chantiers différés : **`docs/NOMENCLATURE_FFP3.md`**.
+> aussi la galerie caméra (`uploadphotosserver -e ffp3`), l'ancien dépôt serveur `ffp3` (abandonné, sans
+> lien avec ce dépôt), et le contrat HMAC générique de `shared/n3_data`. Détails et chantiers différés : **`docs/NOMENCLATURE_FFP3.md`**.
 
 **Matériel** : `hardware/n3-universal/` = carte porteuse universelle des trois firmwares msp / n3pp / ffp5cs
 (générateur KiCad `generator/generate.py` = source de vérité, gardes `tools/`, simulations SPICE `simulation/`,
@@ -133,7 +133,6 @@ lancer ses tests natifs (skills [`build-firmware`](.claude/skills/build-firmware
 - ❌ Ne pas modifier `archive/` ni `à voir/` (legacy / prototypes).
 - ✅ Mutualiser le code dans `shared/` ; mettre à jour `firmwares.manifest.json` si la topologie change.
 - ✅ Bumper la version du firmware touché (+ `VERSION.md`).
-- ✅ Le sous-module `ffp5cs/ffp3` est géré à part (`git submodule update --init` au besoin).
 - ✅ Libre de s'inspirer de dépôts GitHub connus / bibliothèques éprouvées — **en citant la source** (voir ci-dessous).
 - ✅ **Tout changement se répercute partout où il est lié** (code, circuit, composants, brochage, prix…) —
   voir la section suivante. Obligatoire, dans le même commit / la même PR.

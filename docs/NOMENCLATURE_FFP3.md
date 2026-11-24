@@ -25,8 +25,10 @@ l'équivalence plutôt que d'aligner les noms par un renommage risqué.
 2. **Galerie caméra** — le firmware caméra `uploadphotosserver -e ffp3` poste vers
    `/ffp3gallery/` (photos, `board=5`), un sous-système serveur **distinct** des tables
    `ffp3Data*`. Même installation physique, firmware et flux différents.
-3. **Dépôt serveur PHP** — le sous-module `ffp5cs/ffp3` pointe vers
-   `github.com/oliviera999/ffp3.git` (le code serveur « FFP3 Datas », = dépôt n3_serveur).
+3. **Ancien dépôt serveur PHP** — `github.com/oliviera999/ffp3.git` (« FFP3 Datas » v4.x, dernier
+   commit le 20/03/2026) est le **prédécesseur** de `n3_serveur`, qui sert la prod depuis (v6.x).
+   Il n'est plus référencé ici : l'ancien sous-module `ffp5cs/ffp3` a été retiré le 24/11/2026
+   (sa déclaration dans `.gitmodules` survivait sans lien de sous-module dans l'arbre).
 4. **Contrat d'auth HMAC générique** — `shared/n3_data` nomme « FFP3 » sa version moderne du
    protocole HMAC ; `msp` (météo) et `n3pp` (serre) l'utilisent aussi, **sans lien** avec le
    système aquaponie. Ici « ffp3 » = version de protocole, pas le système.
@@ -67,6 +69,6 @@ Options identifiées mais **écartées** pour l'instant, avec la raison :
 |---|---|---|
 | **Validation `sensor ↔ env` côté serveur** | Logger un **warning** (jamais un rejet) si `sensor` reçu ne correspond pas à l'env de la route, pour détecter un firmware mal configuré qui écrirait dans la mauvaise table `ffp3*`. | **Différé.** À faire *log-only* après stabilisation de la convention `sensor="ffp3"`. Un rejet casserait la prod. |
 | **Aligner le canal OTA `ffp5` sur `ffp3`** | Renommer `ffp5-wroom` → `ffp3-*` pour un radical unique. | **Documenté seulement.** Touche le pipeline OTA (`firmware-ota-deploy.yml`, `deploy_ota.py`, chemins serveur) → risque « appareils qui ne reçoivent plus l'OTA ». Non prioritaire. |
-| **Renommer le dossier firmware `ffp5cs/` → `ffp3/`** | Aligner firmware ↔ serveur. | **Rejeté.** Casse le sous-module `ffp5cs/ffp3`, le manifest, la CI matricielle, les scripts flash/OTA et l'historique git. Coût/bénéfice défavorable. |
+| **Renommer le dossier firmware `ffp5cs/` → `ffp3/`** | Aligner firmware ↔ serveur. | **Rejeté.** Casse le manifest, la CI matricielle, les scripts flash/OTA et l'historique git. Coût/bénéfice défavorable. |
 | **Renommer les tables `ffp3Data*` → `ffp5*`** | Aligner serveur ↔ firmware. | **Rejeté.** Migration de données de production (100k+ lignes), réécriture `TableConfig`/repos/dashboards, risque de perte de données. |
 | **Renommer le « contrat HMAC FFP3 »** (`n3_data`) | Il n'a rien de spécifique à ffp3. | **Rejeté.** Partagé par `msp`/`n3pp` + serveur `SignatureValidator` ; surface trop large pour un gain purement cosmétique. |
